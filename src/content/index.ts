@@ -53,7 +53,7 @@ record: {
     break record
   }
 
-  record(2560, 1440)
+  record(1280, 720)
   // const dialog = document.createElement('dialog')
   // dialog.style.width = '384px'
   // dialog.style.height = '288px'
