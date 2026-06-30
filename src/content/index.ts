@@ -1,5 +1,5 @@
 import { createCompositor } from './compositor'
-import { waitForEntryRuntime } from './entry-context'
+import { waitForEntryRuntime, type EntryRuntime } from './entry-context'
 import { changeResolution } from './resolution'
 import { createRuntimeTracer } from './runtime-tracer'
 
@@ -73,6 +73,39 @@ function attachEntryAudio(stream: MediaStream, createjs: any) {
   }
 }
 
+function createEntryStopFallback(runtime: EntryRuntime, stop: () => void) {
+  let sawRunning = !!runtime.Entry.engine?.isState?.('run')
+
+  function stopSoon() {
+    runtime.window.setTimeout(stop, 0)
+  }
+
+  function onClick(event: Event) {
+    const target = event.target
+    if (!(target instanceof runtime.window.Element)) return
+
+    if (target.closest('.entryStopButtonMinimize')) {
+      stopSoon()
+    }
+  }
+
+  const timer = runtime.window.setInterval(() => {
+    const isRunning = !!runtime.Entry.engine?.isState?.('run')
+    if (sawRunning && !isRunning) {
+      stop()
+      return
+    }
+    sawRunning = sawRunning || isRunning
+  }, 250)
+
+  runtime.document.addEventListener('click', onClick, true)
+
+  return () => {
+    runtime.document.removeEventListener('click', onClick, true)
+    runtime.window.clearInterval(timer)
+  }
+}
+
 void startRecording()
 
 async function startRecording() {
@@ -96,6 +129,7 @@ async function startRecording() {
   let stopped = false
   let cleanupAudio = () => {}
   let cleanupTrace = () => {}
+  let cleanupStopFallback = () => {}
   let stopCompositor = () => {}
 
   function stopRecording(recorder: MediaRecorder) {
@@ -150,6 +184,7 @@ async function startRecording() {
     })
 
     recorder.addEventListener('stop', () => {
+      cleanupStopFallback()
       stopCompositor()
       cleanupTrace()
       cleanupAudio()
@@ -177,12 +212,14 @@ async function startRecording() {
     runtime.Entry.addEventListener('stop', () => {
       stopRecording(recorder)
     })
+    cleanupStopFallback = createEntryStopFallback(runtime, () => stopRecording(recorder))
 
     if (!runtime.Entry.engine.isState('run')) {
       runtime.Entry.engine.toggleRun()
     }
   } catch (error) {
     console.error('[Entry Recorder] 녹화를 시작하지 못했습니다.', error)
+    cleanupStopFallback()
     stopCompositor()
     cleanupTrace()
     cleanupAudio()

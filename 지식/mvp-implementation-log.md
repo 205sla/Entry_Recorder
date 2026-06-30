@@ -31,12 +31,21 @@
 - WebGL에서 `stage._app.render`를 후킹할 수 없을 때도 RAF 합성 루프로 fallback 하도록 수정했다.
 - `changeResolution()`은 Entry 내부 stage/container/variable 필드가 일부 비어 있어도 녹화 시작이 중단되지 않도록 방어적으로 변경했다.
 
+## 2026-07-01 실제 작품 테스트
+
+- 기준 작품: `https://playentry.org/project/6a3781996e2f06d9323a9bec`
+- 재현 실패: 실행 후 10초 뒤 iframe 내부 `button.entryStopButtonMinimize` 정지 버튼을 클릭하면 Entry 실행 상태는 `run=false`가 되지만 `Entry.addEventListener('stop')` 이벤트가 오지 않아 `__ENTRY_RECORDER_SESSION__`이 active로 남고 다운로드가 발생하지 않았다.
+- 수정: iframe document의 `.entryStopButtonMinimize` click capture와 engine run 상태 전환 polling을 fallback으로 추가했다.
+- 수정 후 결과: 10초 녹화 뒤 실제 정지 버튼 클릭으로 `entry-recording-20260701-004236.mp4` 다운로드 성공.
+- `ffprobe` 확인: duration `10.150033`, size `7072593`, video `h264 2560x1440`, audio `aac`.
+- 추출 프레임 확인: 5초 프레임에 실행 코드 오버레이가 포함됨.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
 - `npm run build`: 성공
 - `git diff --check`: 성공
-- `node tools/smoke-entry-recorder.mjs`: 6개 smoke 케이스 성공
+- `node tools/smoke-entry-recorder.mjs`: 8개 smoke 케이스 성공
 
 ## 남은 확인
 

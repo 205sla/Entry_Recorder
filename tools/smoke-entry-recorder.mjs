@@ -27,7 +27,23 @@ class FakeEventTarget {
   }
 
   dispatchEvent(event) {
+    if (!event.target) event.target = this
     this.listeners.get(event.type)?.forEach(listener => listener.call(this, event))
+  }
+}
+
+class FakeElement extends FakeEventTarget {
+  constructor(className = '') {
+    super()
+    this.className = className
+  }
+
+  closest(selector) {
+    if (selector === '.entryStopButtonMinimize' && this.className.split(/\s+/).includes('entryStopButtonMinimize')) {
+      return this
+    }
+
+    return null
   }
 }
 
@@ -132,8 +148,9 @@ class FakeAnchorElement {
   }
 }
 
-class FakeDocument {
+class FakeDocument extends FakeEventTarget {
   constructor(smoke, name) {
+    super()
     this.smoke = smoke
     this.name = name
     this.canvas = null
@@ -207,7 +224,7 @@ function createDisplayObject() {
   }
 }
 
-function installEntryRuntime(win, doc, smoke, { webgl, renderHook = true }) {
+function installEntryRuntime(win, doc, smoke, { webgl, renderHook = true, stopMode = 'entry-event' }) {
   const sourceCanvas = new FakeHTMLCanvasElement(smoke, `${doc.name}-entryCanvas`)
   doc.canvas = sourceCanvas
 
@@ -305,7 +322,15 @@ function installEntryRuntime(win, doc, smoke, { webgl, renderHook = true }) {
             win.requestAnimationFrame(step)
           } else {
             runState = 'stop'
-            win.setTimeout(() => dispatchEntryEvent('stop'), 0)
+            win.setTimeout(() => {
+              if (stopMode === 'entry-event') {
+                dispatchEntryEvent('stop')
+              } else {
+                doc.dispatchEvent(new FakeEvent('click', {
+                  target: new FakeElement('entryEngineButtonMinimize entryStopButtonMinimize'),
+                }))
+              }
+            }, 0)
           }
         }
 
@@ -343,10 +368,13 @@ function createWindow(smoke, name) {
     document: doc,
     frames: [],
     HTMLCanvasElement: FakeHTMLCanvasElement,
+    Element: FakeElement,
     MediaStream: FakeMediaStream,
     Blob,
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     requestAnimationFrame: raf.requestAnimationFrame,
     cancelAnimationFrame: raf.cancelAnimationFrame,
   }
@@ -388,9 +416,9 @@ function createMediaRecorderClass(smoke) {
   }
 }
 
-async function runSmokeCase({ iframe, webgl, renderHook = true }) {
+async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entry-event' }) {
   const smoke = {
-    mode: { iframe, webgl, renderHook },
+    mode: { iframe, webgl, renderHook, stopMode },
     alerts: [],
     captureStreams: [],
     downloads: [],
@@ -424,7 +452,7 @@ async function runSmokeCase({ iframe, webgl, renderHook = true }) {
     runtimeDocument = child.doc
   }
 
-  installEntryRuntime(runtimeWindow, runtimeDocument, smoke, { webgl, renderHook })
+  installEntryRuntime(runtimeWindow, runtimeDocument, smoke, { webgl, renderHook, stopMode })
 
   const MediaRecorder = createMediaRecorderClass(smoke)
   const context = {
@@ -515,6 +543,8 @@ const cases = [
   { iframe: true, webgl: true },
   { iframe: false, webgl: true, renderHook: false },
   { iframe: true, webgl: true, renderHook: false },
+  { iframe: false, webgl: true, stopMode: 'button-click' },
+  { iframe: true, webgl: true, stopMode: 'button-click' },
 ]
 
 const results = []
@@ -530,6 +560,7 @@ if (process.argv.includes('--json')) {
       result.mode.iframe ? 'iframe' : 'top',
       result.mode.webgl ? 'webgl' : '2d',
       result.mode.renderHook ? 'render-hook' : 'raf-fallback',
+      result.mode.stopMode,
     ].join('/')
     console.log(`${result.pass ? 'PASS' : 'FAIL'} ${mode}`)
   }
