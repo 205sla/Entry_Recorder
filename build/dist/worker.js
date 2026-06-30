@@ -1,1 +1,1 @@
-(()=>{"use strict";chrome.contextMenus.create({id:"startRecord",title:"녹화 시작하기"}),chrome.contextMenus.onClicked.addListener(((t,e)=>{e?.id&&chrome.scripting.executeScript({files:["dist/content.js"],target:{tabId:e.id},world:"MAIN"}).catch((()=>{}))}))})();
+(()=>{"use strict";chrome.contextMenus.create({id:"startRecord",title:"녹화 시작하기"}),chrome.contextMenus.onClicked.addListener((t,e)=>{e?.id&&chrome.scripting.executeScript({files:["dist/content.js"],target:{tabId:e.id},world:"MAIN"}).catch(()=>{})})})();

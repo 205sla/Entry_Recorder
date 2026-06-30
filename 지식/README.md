@@ -6,3 +6,4 @@
 
 - [Entry Recorder 구조 분석과 코드 오버레이 개발 방향](./entry-recorder-analysis.md)
 - [실행 코드 오버레이 녹화 개발 기획서](./live-code-overlay-recording-plan.md)
+- [MVP 구현 기록](./mvp-implementation-log.md)

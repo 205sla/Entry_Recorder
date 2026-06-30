@@ -1,7 +1,7 @@
 {
   "name": "Entry Recorder",
   "description": "엔트리 작품을 동영상으로 녹화해줍니다.",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "manifest_version": 3,
   "icons": {
     "16": "icons/16.png",
