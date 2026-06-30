@@ -73,6 +73,80 @@ function attachEntryAudio(stream: MediaStream, createjs: any) {
   }
 }
 
+function createRecordingIndicator(runtime: EntryRuntime) {
+  const id = 'entry-recorder-recording-indicator'
+  const styleId = 'entry-recorder-recording-indicator-style'
+  runtime.document.getElementById(id)?.remove()
+  runtime.document.getElementById(styleId)?.remove()
+
+  const style = runtime.document.createElement('style')
+  style.id = styleId
+  style.textContent = `
+    #${id} {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      z-index: 2147483647;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(248, 113, 113, 0.72);
+      border-radius: 999px;
+      background: rgba(8, 12, 18, 0.84);
+      color: #f8fafc;
+      font: 700 13px/1 Arial, sans-serif;
+      letter-spacing: 0;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
+    }
+    #${id} .entry-recorder-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+      animation: entry-recorder-pulse 1s ease-in-out infinite;
+    }
+    #${id} .entry-recorder-time {
+      color: #cbd5e1;
+      font-weight: 600;
+      min-width: 40px;
+    }
+    @keyframes entry-recorder-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.72); }
+    }
+  `
+
+  const indicator = runtime.document.createElement('div')
+  indicator.id = id
+  indicator.setAttribute('role', 'status')
+  indicator.setAttribute('aria-live', 'polite')
+  indicator.innerHTML = '<span class="entry-recorder-dot"></span><span>REC 녹화 중</span><span class="entry-recorder-time">00:00</span>'
+
+  const time = indicator.querySelector('.entry-recorder-time')
+  const startedAt = Date.now()
+  const updateTime = () => {
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+    const minutes = Math.floor(seconds / 60)
+    const rest = seconds % 60
+    if (time) time.textContent = `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+  }
+
+  const host = runtime.document.body || runtime.document.documentElement
+  runtime.document.documentElement.appendChild(style)
+  host.appendChild(indicator)
+  updateTime()
+  const timer = runtime.window.setInterval(updateTime, 500)
+
+  return () => {
+    runtime.window.clearInterval(timer)
+    indicator.remove()
+    style.remove()
+  }
+}
+
 function createEntryStopFallback(runtime: EntryRuntime, stop: () => void) {
   let sawRunning = !!runtime.Entry.engine?.isState?.('run')
 
@@ -128,6 +202,7 @@ async function startRecording() {
 
   let stopped = false
   let cleanupAudio = () => {}
+  let cleanupIndicator = () => {}
   let cleanupTrace = () => {}
   let cleanupStopFallback = () => {}
   let stopCompositor = () => {}
@@ -144,7 +219,7 @@ async function startRecording() {
   try {
     changeResolution(runtime.Entry, DEFAULT_WIDTH, DEFAULT_HEIGHT)
 
-    const tracer = createRuntimeTracer(runtime.Entry)
+    const tracer = createRuntimeTracer(runtime.Entry, runtime.window)
     cleanupTrace = tracer.dispose
 
     const useWebGL = !!runtime.Entry.options?.useWebGL
@@ -185,6 +260,7 @@ async function startRecording() {
 
     recorder.addEventListener('stop', () => {
       cleanupStopFallback()
+      cleanupIndicator()
       stopCompositor()
       cleanupTrace()
       cleanupAudio()
@@ -208,6 +284,7 @@ async function startRecording() {
     })
 
     recorder.start()
+    cleanupIndicator = createRecordingIndicator(runtime)
 
     runtime.Entry.addEventListener('stop', () => {
       stopRecording(recorder)
@@ -220,6 +297,7 @@ async function startRecording() {
   } catch (error) {
     console.error('[Entry Recorder] 녹화를 시작하지 못했습니다.', error)
     cleanupStopFallback()
+    cleanupIndicator()
     stopCompositor()
     cleanupTrace()
     cleanupAudio()

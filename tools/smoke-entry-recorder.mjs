@@ -33,9 +33,50 @@ class FakeEventTarget {
 }
 
 class FakeElement extends FakeEventTarget {
-  constructor(className = '') {
+  constructor(className = '', smoke = null, tagName = 'DIV') {
     super()
     this.className = className
+    this.smoke = smoke
+    this.tagName = tagName
+    this.attributes = new Map()
+    this.children = []
+    this.id = ''
+    this.parentNode = null
+    this.textContent = ''
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value))
+  }
+
+  appendChild(child) {
+    this.children.push(child)
+    child.parentNode = this
+    if (child.id === 'entry-recorder-recording-indicator') this.smoke.indicatorShown += 1
+    return child
+  }
+
+  remove() {
+    if (this.id === 'entry-recorder-recording-indicator') this.smoke.indicatorRemoved += 1
+    if (!this.parentNode) return
+    this.parentNode.children = this.parentNode.children.filter(child => child !== this)
+    this.parentNode = null
+  }
+
+  set innerHTML(value) {
+    this._innerHTML = value
+    if (String(value).includes('entry-recorder-time')) {
+      this.timeElement = new FakeElement('entry-recorder-time', this.smoke, 'SPAN')
+    }
+  }
+
+  get innerHTML() {
+    return this._innerHTML || ''
+  }
+
+  querySelector(selector) {
+    if (selector === '.entry-recorder-time') return this.timeElement || null
+    return null
   }
 
   closest(selector) {
@@ -89,9 +130,12 @@ class FakeCanvasRenderingContext2D {
   restore() {}
   beginPath() {}
   moveTo() {}
+  lineTo() {}
   arcTo() {}
   closePath() {}
   fill() {}
+  stroke() {}
+  strokeRect() {}
 
   drawImage(sourceCanvas) {
     this.smoke.drawImageCalls.push({
@@ -156,6 +200,8 @@ class FakeDocument extends FakeEventTarget {
     this.canvas = null
     this.iframes = []
     this.createdCanvases = 0
+    this.documentElement = new FakeElement('', smoke, 'HTML')
+    this.body = new FakeElement('', smoke, 'BODY')
   }
 
   getElementById(id) {
@@ -176,7 +222,7 @@ class FakeDocument extends FakeEventTarget {
       return new FakeAnchorElement(this.smoke)
     }
 
-    return {}
+    return new FakeElement('', this.smoke, tagName.toUpperCase())
   }
 }
 
@@ -424,6 +470,8 @@ async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entr
     downloads: [],
     drawImageCalls: [],
     errors: [],
+    indicatorRemoved: 0,
+    indicatorShown: 0,
     mediaRecorderOptions: null,
     mediaRecorderStopCalls: 0,
     mediaRecorderTrackCount: 0,
@@ -529,6 +577,8 @@ async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entr
       smoke.recorderStarted &&
       smoke.recorderStopped &&
       smoke.downloads.length === 1 &&
+      smoke.indicatorRemoved === 1 &&
+      smoke.indicatorShown === 1 &&
       smoke.captureStreams.length === 1 &&
       smoke.scopeRuns.length >= 1 &&
       compositeDraws >= 1 &&
