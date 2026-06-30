@@ -5,11 +5,16 @@ interface TraceSource {
   getSnapshot(): RuntimeTraceSnapshot
 }
 
+interface CompositorOptions {
+  manual?: boolean
+}
+
 export function createCompositor(
   sourceCanvas: HTMLCanvasElement,
   width: number,
   height: number,
-  traceSource: TraceSource
+  traceSource: TraceSource,
+  { manual = false }: CompositorOptions = {}
 ) {
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -22,20 +27,25 @@ export function createCompositor(
   let frame = 0
   let running = false
 
-  function draw() {
+  function drawFrame() {
     context.clearRect(0, 0, width, height)
     context.drawImage(sourceCanvas, 0, 0, width, height)
     drawOverlay(context, width, height, traceSource.getSnapshot())
+  }
 
+  function draw() {
+    drawFrame()
     if (running) frame = requestAnimationFrame(draw)
   }
 
   return {
     canvas,
+    drawFrame,
     start() {
       if (running) return
       running = true
-      draw()
+      drawFrame()
+      if (!manual) frame = requestAnimationFrame(draw)
     },
     stop() {
       running = false

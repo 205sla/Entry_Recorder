@@ -1,5 +1,5 @@
 import { createCompositor } from './compositor'
-import { findEntryRuntime } from './entry-context'
+import { waitForEntryRuntime } from './entry-context'
 import { changeResolution } from './resolution'
 import { createRuntimeTracer } from './runtime-tracer'
 
@@ -73,22 +73,24 @@ function attachEntryAudio(stream: MediaStream, createjs: any) {
   }
 }
 
-record: {
+void startRecording()
+
+async function startRecording() {
   if (typeof MediaRecorder === 'undefined') {
     alert('이 브라우저는 MediaRecorder 녹화를 지원하지 않습니다.')
-    break record
+    return
   }
 
-  const runtime = findEntryRuntime()
+  const runtime = await waitForEntryRuntime()
   if (!runtime) {
     alert('엔트리 작품 페이지가 아닙니다.')
-    break record
+    return
   }
 
   const activeSession = runtime.window.__ENTRY_RECORDER_SESSION__
   if (activeSession?.active) {
     alert('이미 녹화 중입니다.')
-    break record
+    return
   }
 
   let stopped = false
@@ -111,9 +113,25 @@ record: {
     const tracer = createRuntimeTracer(runtime.Entry)
     cleanupTrace = tracer.dispose
 
-    const compositor = createCompositor(runtime.canvas, DEFAULT_WIDTH, DEFAULT_HEIGHT, tracer)
-    compositor.start()
+    const useWebGL = !!runtime.Entry.options?.useWebGL
+    const app = useWebGL ? runtime.Entry.stage?._app : null
+    const originalRender = typeof app?.render === 'function' ? app.render.bind(app) : null
+    const compositor = createCompositor(runtime.canvas, DEFAULT_WIDTH, DEFAULT_HEIGHT, tracer, { manual: !!originalRender })
     stopCompositor = compositor.stop
+
+    if (app && originalRender) {
+      app.render = () => {
+        originalRender()
+        compositor.drawFrame()
+      }
+      const prevStop = stopCompositor
+      stopCompositor = () => {
+        app.render = originalRender
+        prevStop()
+      }
+    }
+
+    compositor.start()
 
     const options = selectMediaRecorderOptions()
     const stream = compositor.canvas.captureStream(options.frameRequestRate)

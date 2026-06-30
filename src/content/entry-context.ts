@@ -84,3 +84,25 @@ export function findEntryRuntime(): EntryRuntime | null {
 
   return null
 }
+
+function hasRunnableScope(runtime: EntryRuntime) {
+  const EntryWithScope = runtime.Entry as any
+  return typeof EntryWithScope.Scope?.prototype?.run === 'function'
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+export async function waitForEntryRuntime(timeoutMs = 8000, intervalMs = 100): Promise<EntryRuntime | null> {
+  const deadline = performance.now() + timeoutMs
+
+  while (performance.now() < deadline) {
+    const runtime = findEntryRuntime()
+    if (runtime && hasRunnableScope(runtime)) return runtime
+    await delay(intervalMs)
+  }
+
+  const runtime = findEntryRuntime()
+  return runtime && hasRunnableScope(runtime) ? runtime : null
+}

@@ -161,13 +161,20 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
   const stage = entry?.stage
   if (!stage) return
 
-  const { type, engine, options: { useWebGL } } = entry
-  const { canvas } = stage
-  const canvasElement = canvas.canvas
+  const entryAny = entry as any
+  const stageAny = stage as any
+  const type = entryAny.type
+  const engine = entryAny.engine
+  const useWebGL = !!entryAny.options?.useWebGL
+  const canvas = stageAny.canvas
+  const canvasElement = canvas?.canvas
+  if (!canvas || !canvasElement) return
 
-  if (useWebGL) for (const text of canvas.children.flatMap(function findTree(v): Entry.StageObject[] {
-    return [v, ...v.children.flatMap(findTree)]
-  }).filter(v => v.resolution)) text.resolution = width / 640
+  const canvasChildren: any[] = Array.isArray(canvas.children) ? canvas.children : []
+  if (useWebGL) for (const text of canvasChildren.flatMap(function findTree(v: any): any[] {
+    const children = Array.isArray(v?.children) ? v.children : []
+    return [v, ...children.flatMap(findTree)]
+  }).filter((v: any) => v.resolution)) text.resolution = width / 640
 
   if (canvasElement.width != width || canvasElement.height != height) {
     canvasElement.width = width
@@ -177,7 +184,8 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
     canvas.scaleX = width / 480
     canvas.scaleY = height / 270
 
-    const { _app } = stage, { screen, renderer } = _app
+    const app = stageAny._app
+    const { screen, renderer } = app || {}
     if (screen && renderer) {
       screen.width = width
       screen.height = height
@@ -186,11 +194,11 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       renderer.options.height = height
     }
 
-    _app.render?.()
+    app?.render?.()
     canvas.update?.()
   }
 
-  const inputField = stage.inputField
+  const inputField = stageAny.inputField
   if (inputField && !inputField._isHidden && inputField._padding != width * 13 / 640) {
     inputField.x(Math.round(width * 3 / 128))
     inputField.y(Math.round(height * 55 / 72))
@@ -207,19 +215,23 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       view.position.set((inputField._x - canvas.x) / canvas.scaleX, (inputField._y - canvas.y) / canvas.scaleY)
     }
     entry.requestUpdate = true
-    stage.update()
+    stageAny.update?.()
     entry.requestUpdate = false
   }
 
-  entry.container.objects_.forEach(({ entity: { object } }, i) => {
+  const objects: any[] = entryAny.container?.objects_ || []
+  objects.forEach((item: any, i: number) => {
+    const object = item?.entity?.object
+    if (!object) return
+
     if (object._viewportPatched == i) return
     object._viewportPatched = i
     object.removeAllListeners?.('__pointermove')
     object.removeAllListeners?.('__pointerup')
     object.removeAllEventListeners?.('mousedown')
     object.removeAllEventListeners?.('pressmove')
-    object.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }) => {
-      entry.dispatchEvent('entityClick', object.entity)
+    object.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }: Entry.StageEvent) => {
+      entry.dispatchEvent?.('entityClick', object.entity)
       stage.isObjectClick = true
       if (entry.type != 'minimize' && stage.isEntitySelectable()) {
         object.offset = {
@@ -228,10 +240,10 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
         }
         object.cursor = 'move'
         object.entity.initCommand()
-        entry.container.selectObject(object.entity.parent.id)
+        entryAny.container?.selectObject?.(object.entity.parent.id)
       }
     })
-    object.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }) => {
+    object.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }: Entry.StageEvent) => {
       if (!stage.isEntitySelectable()) return
       const { entity } = object
       if (entity.parent.getLock()) return
@@ -239,18 +251,20 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
         entity.setX((stageX - canvas.x) / canvas.scaleX + object.offset.x)
         entity.setY((canvas.y - stageY) / canvas.scaleY - object.offset.y)
       }
-      stage.updateObject()
+      stageAny.updateObject?.()
     })
   })
-  const variables = stage.variableContainer.children
-  variables.forEach((variable, i) => {
+  const variables: any[] = stageAny.variableContainer?.children || []
+  variables.forEach((variable: any, i: number) => {
     const { variable: variableObj } = variable
+    if (!variableObj) return
+
     const { slideBar_, valueSetter_, resizeHandle_, scrollButton_ } = variableObj
     if (slideBar_ && slideBar_._viewportPatched != i) {
       slideBar_._viewportPatched = i
       slideBar_.removeAllListeners?.('__pointermove')
       slideBar_.removeAllEventListeners?.('mousedown')
-      slideBar_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX }) => engine.isState('run') && variableObj.setSlideCommandX(stageX / canvas.scaleX - variableObj.getX() - canvas.x / canvas.scaleX))
+      slideBar_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX }: Entry.StageEvent) => engine?.isState?.('run') && variableObj.setSlideCommandX(stageX / canvas.scaleX - variableObj.getX() - canvas.x / canvas.scaleX))
     }
 
     if (valueSetter_ && valueSetter_._viewportPatched != i) {
@@ -259,11 +273,11 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       valueSetter_.removeAllListeners?.('__pointerup')
       valueSetter_.removeAllEventListeners?.('mousedown')
       valueSetter_.removeAllEventListeners?.('pressmove')
-      valueSetter_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX }) => engine.isState('run') && (
+      valueSetter_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX }: Entry.StageEvent) => engine?.isState?.('run') && (
         variableObj.isAdjusting = true,
         valueSetter_.offsetX = stageX / canvas.scaleX - valueSetter_.x
       ))
-      valueSetter_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX }) => engine.isState('run') && variableObj.setSlideCommandX(stageX / canvas.scaleX - valueSetter_.offsetX + 5))
+      valueSetter_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX }: Entry.StageEvent) => engine?.isState?.('run') && variableObj.setSlideCommandX(stageX / canvas.scaleX - valueSetter_.offsetX + 5))
     }
 
     if (resizeHandle_ && resizeHandle_._viewportPatched != i) {
@@ -272,7 +286,7 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       resizeHandle_.removeAllListeners?.('__pointerup')
       resizeHandle_.removeAllEventListeners?.('mousedown')
       resizeHandle_.removeAllEventListeners?.('pressmove')
-      resizeHandle_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }) => {
+      resizeHandle_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }: Entry.StageEvent) => {
         variableObj.isResizing = !0
         resizeHandle_.offset = {
           x: stageX / canvas.scaleX - variableObj.getWidth(),
@@ -280,7 +294,7 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
         }
         resizeHandle_.parent.cursor = 'nwse-resize'
       })
-      resizeHandle_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }) => {
+      resizeHandle_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }: Entry.StageEvent) => {
         variableObj.setWidth(stageX / canvas.scaleX - resizeHandle_.offset.x)
         variableObj.setHeight(stageY / canvas.scaleY - resizeHandle_.offset.y)
         variableObj.updateView()
@@ -293,11 +307,11 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       scrollButton_.removeAllListeners?.('__pointerup')
       scrollButton_.removeAllEventListeners?.('mousedown')
       scrollButton_.removeAllEventListeners?.('pressmove')
-      scrollButton_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageY }) => {
+      scrollButton_.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageY }: Entry.StageEvent) => {
         variableObj.isResizing = !0
         scrollButton_.offsetY = stageY - scrollButton_.y * canvas.scaleY
       })
-      scrollButton_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageY }) => {
+      scrollButton_.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageY }: Entry.StageEvent) => {
         scrollButton_.y = Math.max(25, Math.min(variableObj.getHeight() - 30, (stageY - scrollButton_.offsetY) / canvas.scaleY))
         variableObj.updateView()
       })
@@ -309,23 +323,25 @@ export function changeResolution(entry: typeof Entry, width: number, height: num
       variable.removeAllListeners?.('__pointerup')
       variable.removeAllEventListeners?.('mousedown')
       variable.removeAllEventListeners?.('pressmove')
-      variable.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }) => type == 'workspace' && (
+      variable.on(useWebGL ? '__pointermove' : 'mousedown', ({ stageX, stageY }: Entry.StageEvent) => type == 'workspace' && (
         variable.offset = {
           x: variable.x - (stageX - canvas.x) / canvas.scaleX,
           y: variable.y - (stageY - canvas.y) / canvas.scaleY,
         }
       ))
-      variable.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }) => type != 'workspace' || variableObj.isResizing || variableObj.isAdjusting || (
+      variable.on(useWebGL ? '__pointerup' : 'pressmove', ({ stageX, stageY }: Entry.StageEvent) => type != 'workspace' || variableObj.isResizing || variableObj.isAdjusting || (
         variableObj.setX((stageX - canvas.x) / canvas.scaleX + variable.offset.x),
         variableObj.setY((stageY - canvas.y) / canvas.scaleY + variable.offset.y),
         variableObj.updateView()
       ))
     }
   })
-  stage.handle.getEventCoordinate = ({ stageX, stageY }) => ({
-    x: (stageX - canvas.x) / canvas.scaleX,
-    y: (stageY - canvas.y) / canvas.scaleY,
-  })
+  if (stageAny.handle) {
+    stageAny.handle.getEventCoordinate = ({ stageX, stageY }: Entry.StageEvent) => ({
+      x: (stageX - canvas.x) / canvas.scaleX,
+      y: (stageY - canvas.y) / canvas.scaleY,
+    })
+  }
 
   // Entry FHD 비활성화
   try {

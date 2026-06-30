@@ -23,11 +23,20 @@
 - `src/content/overlay-renderer.ts`: 녹화용 코드 패널 렌더링
 - `src/content/compositor.ts`: 원본 캔버스와 오버레이 합성
 
+## 2026-07-01 smoke 디버깅
+
+- 브라우저 정책상 `file://`/localhost in-app smoke는 실행하지 못해 Node `vm` 기반 smoke harness를 추가했다.
+- `tools/smoke-entry-recorder.mjs`에서 top window/iframe, 2D/WebGL, WebGL render hook 누락 fallback 케이스를 검증한다.
+- Entry 런타임과 `Entry.Scope.prototype.run`이 준비될 때까지 최대 8초 대기하도록 시작 흐름을 보강했다.
+- WebGL에서 `stage._app.render`를 후킹할 수 없을 때도 RAF 합성 루프로 fallback 하도록 수정했다.
+- `changeResolution()`은 Entry 내부 stage/container/variable 필드가 일부 비어 있어도 녹화 시작이 중단되지 않도록 방어적으로 변경했다.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
 - `npm run build`: 성공
 - `git diff --check`: 성공
+- `node tools/smoke-entry-recorder.mjs`: 6개 smoke 케이스 성공
 
 ## 남은 확인
 

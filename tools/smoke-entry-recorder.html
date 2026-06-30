@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Entry Recorder Smoke</title>
+  <style>
+    body {
+      margin: 0;
+      font: 14px/1.4 Arial, sans-serif;
+      background: #10141f;
+      color: #e5e7eb;
+    }
+
+    main {
+      display: grid;
+      gap: 16px;
+      padding: 24px;
+    }
+
+    canvas,
+    iframe {
+      width: 480px;
+      height: 270px;
+      border: 1px solid #475569;
+      background: #0f172a;
+    }
+
+    pre {
+      width: min(920px, calc(100vw - 48px));
+      min-height: 180px;
+      padding: 16px;
+      overflow: auto;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Entry Recorder Smoke</h1>
+    <div id="fixture"></div>
+    <pre id="log"></pre>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(location.search)
+    const smoke = window.__ENTRY_RECORDER_SMOKE__ = {
+      mode: {
+        iframe: params.get('iframe') === '1',
+        webgl: params.get('webgl') === '1',
+      },
+      alerts: [],
+      downloads: [],
+      errors: [],
+      events: [],
+      recorderOptions: null,
+      renderCalls: 0,
+      drawCalls: 0,
+      started: false,
+      stopped: false,
+    }
+
+    const log = document.getElementById('log')
+    function renderLog() {
+      log.textContent = JSON.stringify(smoke, null, 2)
+    }
+
+    function recordError(error) {
+      smoke.errors.push(String(error && (error.message || error.reason || error)))
+      document.body.dataset.done = '1'
+      renderLog()
+    }
+
+    window.addEventListener('error', recordError)
+    window.addEventListener('unhandledrejection', recordError)
+
+    window.alert = message => {
+      smoke.alerts.push(String(message))
+      document.body.dataset.done = '1'
+      renderLog()
+    }
+
+    const originalCreateObjectUrl = URL.createObjectURL.bind(URL)
+    URL.createObjectURL = blob => {
+      smoke.objectUrlType = blob && blob.type
+      return originalCreateObjectUrl(blob)
+    }
+
+    URL.revokeObjectURL = () => {}
+
+    HTMLAnchorElement.prototype.click = function clickSmokeDownload() {
+      if (this.download) {
+        smoke.downloads.push({
+          download: this.download,
+          href: this.href,
+        })
+        document.body.dataset.done = '1'
+        renderLog()
+      }
+    }
+
+    class SmokeMediaRecorder extends EventTarget {
+      static isTypeSupported(type) {
+        return type.includes('webm')
+      }
+
+      constructor(stream, options = {}) {
+        super()
+        this.stream = stream
+        this.state = 'inactive'
+        this.mimeType = options.mimeType || 'video/webm'
+        smoke.recorderOptions = options
+        smoke.trackCount = typeof stream.getTracks === 'function' ? stream.getTracks().length : 0
+      }
+
+      start() {
+        this.state = 'recording'
+        smoke.started = true
+        renderLog()
+      }
+
+      stop() {
+        if (this.state === 'inactive') return
+        this.state = 'inactive'
+        smoke.stopped = true
+        this.dispatchEvent(new MessageEvent('dataavailable', {
+          data: new Blob(['entry-recorder-smoke'], { type: this.mimeType }),
+        }))
+        this.dispatchEvent(new Event('stop'))
+        renderLog()
+      }
+    }
+
+    window.MediaRecorder = SmokeMediaRecorder
+
+    if (!HTMLCanvasElement.prototype.captureStream) {
+      HTMLCanvasElement.prototype.captureStream = () => new MediaStream()
+    }
+
+    function createNoopDisplayObject() {
+      return {
+        children: [],
+        on() {},
+        removeAllListeners() {},
+        removeAllEventListeners() {},
+      }
+    }
+
+    function installFakeEntry(targetWindow, targetDocument) {
+      const canvas = targetDocument.createElement('canvas')
+      canvas.id = 'entryCanvas'
+      canvas.width = 480
+      canvas.height = 270
+      targetDocument.body.appendChild(canvas)
+
+      const context = canvas.getContext('2d')
+      let runState = 'stop'
+      let tick = 0
+      const listeners = new Map()
+      const entity = {
+        id: 'entity-1',
+        name: 'Smoke Sprite',
+        parent: {
+          id: 'object-1',
+          getName: () => 'Smoke Sprite',
+          getLock: () => false,
+        },
+      }
+
+      function drawSourceFrame() {
+        tick += 1
+        context.fillStyle = tick % 2 ? '#0369a1' : '#047857'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.fillStyle = '#ffffff'
+        context.font = '48px Arial'
+        context.fillText(`tick ${tick}`, 80, 145)
+      }
+
+      function dispatch(event) {
+        const callbacks = listeners.get(event) || []
+        callbacks.forEach(callback => callback())
+      }
+
+      function Scope(block) {
+        this.block = block
+      }
+
+      Scope.prototype.run = function runSmokeScope(entityArg) {
+        smoke.events.push({
+          block: this.block.type,
+          entity: entityArg && entityArg.id,
+        })
+        return true
+      }
+
+      const stageCanvas = {
+        canvas,
+        children: [createNoopDisplayObject()],
+        x: 240,
+        y: 135,
+        scaleX: 1,
+        scaleY: 1,
+        update() {},
+      }
+
+      const app = {
+        screen: { width: canvas.width, height: canvas.height },
+        renderer: {
+          options: { width: canvas.width, height: canvas.height },
+          resize(width, height) {
+            smoke.resize = { width, height }
+          },
+        },
+        render() {
+          smoke.renderCalls += 1
+        },
+      }
+
+      targetWindow.Entry = {
+        Scope,
+        Lang: {
+          Blocks: {
+            move_direction: 'move %1 steps',
+          },
+        },
+        options: {
+          useWebGL: smoke.mode.webgl,
+        },
+        type: 'workspace',
+        requestUpdate: false,
+        engine: {
+          isState(state) {
+            return runState === state
+          },
+          toggleRun() {
+            runState = 'run'
+            const loop = () => {
+              if (runState !== 'run') return
+              drawSourceFrame()
+              new Scope({
+                id: `block-${tick}`,
+                type: 'move_direction',
+                params: [tick],
+              }).run(entity, false)
+              app.render()
+              if (tick < 4) {
+                targetWindow.requestAnimationFrame(loop)
+              } else {
+                runState = 'stop'
+                targetWindow.setTimeout(() => dispatch('stop'), 30)
+              }
+            }
+            targetWindow.requestAnimationFrame(loop)
+          },
+        },
+        stage: {
+          canvas: stageCanvas,
+          _app: app,
+          inputField: null,
+          variableContainer: { children: [] },
+          handle: {
+            getEventCoordinate: event => event,
+          },
+          isObjectClick: false,
+          isEntitySelectable: () => false,
+          updateObject() {},
+          update() {},
+        },
+        container: {
+          objects_: [],
+          selectObject() {},
+        },
+        dispatchEvent() {},
+        addEventListener(event, callback) {
+          if (!listeners.has(event)) listeners.set(event, [])
+          listeners.get(event).push(callback)
+        },
+      }
+
+      drawSourceFrame()
+    }
+
+    const fixture = document.getElementById('fixture')
+    if (smoke.mode.iframe) {
+      const iframe = document.createElement('iframe')
+      iframe.srcdoc = '<!doctype html><html><body style="margin:0;background:#111827"></body></html>'
+      fixture.appendChild(iframe)
+      iframe.addEventListener('load', () => {
+        installFakeEntry(iframe.contentWindow, iframe.contentDocument)
+        const script = document.createElement('script')
+        script.src = '../build/dist/content.js'
+        document.body.appendChild(script)
+      })
+    } else {
+      installFakeEntry(window, document)
+      const script = document.createElement('script')
+      script.src = '../build/dist/content.js'
+      document.body.appendChild(script)
+    }
+
+    renderLog()
+  </script>
+</body>
+</html>
