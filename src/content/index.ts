@@ -2,6 +2,7 @@ import { createCompositor } from './compositor'
 import { waitForEntryRuntime, type EntryRuntime } from './entry-context'
 import { changeResolution } from './resolution'
 import { createRuntimeTracer } from './runtime-tracer'
+import { createBlockStackImageCache } from './block-stack-image'
 
 interface RecordOptions extends MediaRecorderOptions {
   frameRequestRate: number
@@ -147,6 +148,66 @@ function createRecordingIndicator(runtime: EntryRuntime) {
   }
 }
 
+function createPreparationIndicator(runtime: EntryRuntime) {
+  const id = 'entry-recorder-preparation-indicator'
+  const styleId = 'entry-recorder-preparation-indicator-style'
+  runtime.document.getElementById(id)?.remove()
+  runtime.document.getElementById(styleId)?.remove()
+
+  const style = runtime.document.createElement('style')
+  style.id = styleId
+  style.textContent = `
+    #${id} {
+      position: fixed;
+      left: 14px;
+      top: 14px;
+      z-index: 2147483647;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 13px;
+      border: 1px solid rgba(56, 189, 248, 0.72);
+      border-radius: 999px;
+      background: rgba(8, 12, 18, 0.86);
+      color: #f8fafc;
+      font: 700 13px/1 Arial, sans-serif;
+      letter-spacing: 0;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
+    }
+    #${id} .entry-recorder-spinner {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(186, 230, 253, 0.42);
+      border-top-color: #38bdf8;
+      animation: entry-recorder-spin 0.75s linear infinite;
+    }
+    #${id} .entry-recorder-subtle {
+      color: #bae6fd;
+      font-weight: 600;
+    }
+    @keyframes entry-recorder-spin {
+      to { transform: rotate(360deg); }
+    }
+  `
+
+  const indicator = runtime.document.createElement('div')
+  indicator.id = id
+  indicator.setAttribute('role', 'status')
+  indicator.setAttribute('aria-live', 'polite')
+  indicator.innerHTML = '<span class="entry-recorder-spinner"></span><span>녹화 준비 중</span><span class="entry-recorder-subtle">블록 이미지 생성</span>'
+
+  const host = runtime.document.body || runtime.document.documentElement
+  runtime.document.documentElement.appendChild(style)
+  host.appendChild(indicator)
+
+  return () => {
+    indicator.remove()
+    style.remove()
+  }
+}
+
 function createEntryStopFallback(runtime: EntryRuntime, stop: () => void) {
   let sawRunning = !!runtime.Entry.engine?.isState?.('run')
 
@@ -203,6 +264,7 @@ async function startRecording() {
   let stopped = false
   let cleanupAudio = () => {}
   let cleanupIndicator = () => {}
+  let cleanupPreparationIndicator = () => {}
   let cleanupTrace = () => {}
   let cleanupStopFallback = () => {}
   let stopCompositor = () => {}
@@ -219,8 +281,17 @@ async function startRecording() {
   try {
     changeResolution(runtime.Entry, DEFAULT_WIDTH, DEFAULT_HEIGHT)
 
-    const tracer = createRuntimeTracer(runtime.Entry, runtime.window)
-    cleanupTrace = tracer.dispose
+    cleanupPreparationIndicator = createPreparationIndicator(runtime)
+    const blockImages = createBlockStackImageCache(runtime.window, runtime.Entry)
+    await blockImages.prepare()
+    cleanupPreparationIndicator()
+    cleanupPreparationIndicator = () => {}
+
+    const tracer = createRuntimeTracer(runtime.Entry, runtime.window, { blockImages })
+    cleanupTrace = () => {
+      tracer.dispose()
+      blockImages.dispose()
+    }
 
     const useWebGL = !!runtime.Entry.options?.useWebGL
     const app = useWebGL ? runtime.Entry.stage?._app : null
@@ -298,6 +369,7 @@ async function startRecording() {
     console.error('[Entry Recorder] 녹화를 시작하지 못했습니다.', error)
     cleanupStopFallback()
     cleanupIndicator()
+    cleanupPreparationIndicator()
     stopCompositor()
     cleanupTrace()
     cleanupAudio()

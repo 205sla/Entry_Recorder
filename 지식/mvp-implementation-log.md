@@ -55,6 +55,16 @@
 - `overlay-renderer`가 밝은 점 격자 배경, 오브젝트 헤더, 블록 개수 badge, 시작/일반/반복 블록 형태, 숫자/문자 인자 capsule, 현재 실행 `NOW` 표시를 캔버스에 그린다.
 - Entry 내부 `BlockView` SVG를 직접 재사용하지 않고 녹화용 canvas renderer로 구현했다. 실제 작업창 렌더러와 분리되어 녹화 안정성을 우선한다.
 
+## 2026-07-01 Entry 원본 블록 스택 이미지 오버레이
+
+- 플레이어 iframe(`Entry.type=minimize`)에서는 실행 중인 `Entry.Block`에 `view`가 붙어 있지 않아 `block.view.getDataUrl()`을 바로 호출할 수 없음을 확인했다.
+- 녹화 준비 단계에서 thread가 있는 각 오브젝트 script에 숨겨진 `Entry.Board`를 만들고 `board.changeCode(code)`를 호출해 런타임 block에 원본 `BlockView`를 생성한다.
+- 준비 중에는 Entry 작품을 바로 실행하지 않고 iframe 좌상단에 `녹화 준비 중 / 블록 이미지 생성` 표시를 띄운다.
+- 준비가 끝난 뒤 `MediaRecorder`와 합성 캔버스를 시작하고, 그 다음 `Entry.engine.toggleRun()`으로 작품을 실행한다.
+- 실행 중 `Scope.run`에서 현재 block을 받으면 해당 block의 root stack을 찾아 Entry 원본 SVG를 복제하고 현재 block의 own shape에 노란 stroke/filter를 적용한다.
+- SVG 내부 이미지 아이콘은 Blob SVG 안에서 깨질 수 있어 fetch 후 data URL로 인라인한다.
+- 원본 stack 이미지가 준비된 프레임부터 영상 오버레이는 실제 Entry 블록 이미지로 전환된다. 이미지 생성이 실패하거나 view를 만들 수 없는 환경에서는 기존 canvas 블록 패널로 fallback 한다.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
@@ -63,15 +73,18 @@
 - `node tools/smoke-entry-recorder.mjs`: 8개 smoke 케이스 성공
 - 실제 작품 `6a3781996e2f06d9323a9bec`: `REC 녹화 중` 표시 노출 및 정지 후 제거, `entry-recording-20260701-005331.mp4` 다운로드 성공
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 블록 이미지 오버레이 적용 후 `entry-recording-20260701-010809.mp4` 다운로드 성공, 5초 프레임에서 한국어 블록/인자 capsule/단일 `NOW` 표시 확인
+- 실제 작품 `6a3781996e2f06d9323a9bec`: Entry 원본 BlockView 스택 오버레이 적용 후 `entry-recording-20260701-141840.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.512800`, size `7417945`, video `h264 2560x1440`, audio `aac`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-block-stack-frame-5s-inline-icons.png`에서 원본 Entry 블록 스택, 시작 아이콘, 현재 실행 블록 노란 강조 표시를 확인했다.
 
 ## 남은 확인
 
 다음 작업에서는 playentry.org 실제 작품 페이지에서 더 다양한 블록 유형을 확인해야 한다.
 
 - `/project/`, `/iframe/`, `/noframe/`별 Entry 탐색 성공 여부
-- 반복/조건/계산/변수/리스트/사용자 함수 블록의 토큰 표시 품질
-- 실행 중인 전체 스크립트 묶음 복원 가능 여부
+- 긴 stack/여러 statement/사용자 함수 블록 이미지의 축소 비율과 강조 위치
+- 숨겨진 `Entry.Board` 생성 비용이 큰 대형 작품에서 준비 시간
+- 실제 블록 이미지가 만들어지지 않는 구형 Entry 런타임에서 fallback 품질
 
 ## 주의점
 
-현재 오버레이는 최근 실행 블록들을 블록 모양으로 렌더링한다. Entry 작업창의 전체 스크립트 묶음을 그대로 캡처하는 단계는 아니므로, 다음 단계에서 block/thread 연결 구조를 따라 전체 스택 복원을 검토해야 한다.
+현재 오버레이는 가능한 경우 Entry 원본 `BlockView`로 만든 root stack 이미지를 사용한다. 다만 플레이어 런타임에 `Entry.Board`/`BlockView`가 없거나 숨겨진 view 생성에 실패하면 이전 canvas 기반 블록 패널로 fallback 한다.

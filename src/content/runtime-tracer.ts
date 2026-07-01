@@ -1,3 +1,5 @@
+import type { BlockStackImageCache, BlockStackImageSnapshot } from './block-stack-image'
+
 export interface RunningBlockToken {
   kind: 'text' | 'param'
   text: string
@@ -21,11 +23,16 @@ export interface RunningBlockEvent {
 export interface RuntimeTraceSnapshot {
   current: RunningBlockEvent | null
   recent: RunningBlockEvent[]
+  stackImage: BlockStackImageSnapshot | null
 }
 
 interface TraceRegistry {
   listeners: Set<(scope: any, entity: any) => void>
   originalRun: Function
+}
+
+interface RuntimeTracerOptions {
+  blockImages?: BlockStackImageCache
 }
 
 const REGISTRY_KEY = '__entryRecorderTraceRegistry'
@@ -279,10 +286,11 @@ function ensureTraceRegistry(entry: any): TraceRegistry | null {
   return registry
 }
 
-export function createRuntimeTracer(entry: any, runtimeWindow: any = window) {
+export function createRuntimeTracer(entry: any, runtimeWindow: any = window, options: RuntimeTracerOptions = {}) {
   const registry = ensureTraceRegistry(entry)
   const recent: RunningBlockEvent[] = []
   let current: RunningBlockEvent | null = null
+  let currentStackImageKey = ''
   let lastKey = ''
   let lastTime = 0
 
@@ -296,6 +304,7 @@ export function createRuntimeTracer(entry: any, runtimeWindow: any = window) {
     lastKey = key
     lastTime = event.time
     current = event
+    currentStackImageKey = options.blockImages?.request(scope?.block)?.key || ''
     recent.unshift(event)
     recent.splice(MAX_RECENT)
   }
@@ -307,6 +316,7 @@ export function createRuntimeTracer(entry: any, runtimeWindow: any = window) {
       return {
         current,
         recent: recent.slice(),
+        stackImage: currentStackImageKey ? options.blockImages?.get(currentStackImageKey) || null : null,
       }
     },
     dispose() {

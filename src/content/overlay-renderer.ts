@@ -346,6 +346,51 @@ function drawHeader(
   ctx.fillText(badgeText, x + panelWidth - badgeWidth + Math.round(13 * scale), y + Math.round(18 * scale))
 }
 
+function drawStackImagePanel(
+  ctx: CanvasRenderingContext2D,
+  snapshot: RuntimeTraceSnapshot,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scale: number
+) {
+  const stackImage = snapshot.stackImage
+  const image = stackImage?.status === 'ready' ? stackImage.image : null
+  if (!image) return false
+
+  const sourceWidth = stackImage?.width || image.naturalWidth || image.width
+  const sourceHeight = stackImage?.height || image.naturalHeight || image.height
+  if (!sourceWidth || !sourceHeight) return false
+
+  const imagePadding = Math.round(12 * scale)
+  const maxWidth = width - imagePadding * 2
+  const maxHeight = height - imagePadding * 2
+  const ratio = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, 2.4)
+  const drawWidth = Math.max(1, Math.round(sourceWidth * ratio))
+  const drawHeight = Math.max(1, Math.round(sourceHeight * ratio))
+  const drawX = x + Math.round((width - drawWidth) / 2)
+  const drawY = y + Math.round((height - drawHeight) / 2)
+
+  ctx.save()
+  drawRoundRect(ctx, x, y, width, height, Math.round(8 * scale))
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.48)'
+  ctx.fill()
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.14)'
+  ctx.shadowBlur = Math.round(12 * scale)
+  ctx.shadowOffsetY = Math.round(3 * scale)
+
+  try {
+    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
+  } catch {
+    ctx.restore()
+    return false
+  }
+
+  ctx.restore()
+  return true
+}
+
 function getDisplayEvents(snapshot: RuntimeTraceSnapshot) {
   const events = snapshot.recent.slice(0, MAX_BLOCKS).reverse()
   if (snapshot.current && !events.some(event => event === snapshot.current)) {
@@ -382,6 +427,12 @@ export function drawOverlay(
   const blockMaxWidth = panelWidth - padding * 2
   let cursorY = y + padding + Math.round(58 * scale)
   const events = getDisplayEvents(snapshot)
+  const stackImageHeight = y + panelHeight - padding - cursorY
+
+  if (drawStackImagePanel(ctx, snapshot, blockX, cursorY, blockMaxWidth, stackImageHeight, scale)) {
+    ctx.restore()
+    return
+  }
 
   if (!events.length) {
     drawRoundRect(ctx, blockX, cursorY, blockMaxWidth, Math.round(52 * scale), Math.round(14 * scale))
