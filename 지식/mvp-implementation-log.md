@@ -72,6 +72,14 @@
 - Entry 런타임이 현재 실행 중인 전체 thread 목록을 안정적인 공개 API로 제공하지 않기 때문에, 최근 `1200ms` 안에 실행 이벤트가 들어온 stack을 동작 중인 묶음으로 본다.
 - 동시에 준비된 stack 이미지가 여러 개면 기존 오버레이 영역 안에서 격자로 배치한다. 준비된 원본 이미지가 없으면 기존처럼 단일 현재 stack 또는 canvas fallback 패널을 사용한다.
 
+## 2026-07-01 묶음별 오브젝트 표시와 조립소 배경
+
+- 원본 BlockView stack 이미지 셀마다 오브젝트 마커, 오브젝트 이름, 묶음 블럭 수 badge를 표시한다.
+- 블럭 수는 `thread.countBlock()`을 우선 사용하고, 없으면 root stack의 top-level block과 중첩 statement/param block을 순회해 계산한다.
+- 오브젝트 thumbnail을 원격 이미지로 바로 그리면 녹화용 canvas가 taint될 위험이 있어, 현재는 오브젝트 id/name 기반 색상 마커와 이름을 사용한다.
+- 패널과 각 stack 셀의 배경을 단색 카드가 아닌 Entry 블럭 조립소 느낌의 밝은 점무늬 작업창 배경으로 통일했다.
+- 활성 stack이 2개 이상이면 패널을 조금 넓고 높게 잡고, 좁은 셀에서는 badge를 `5개`처럼 축약해 오브젝트 이름 공간을 확보한다.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
@@ -84,6 +92,8 @@
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-block-stack-frame-5s-inline-icons.png`에서 원본 Entry 블록 스택, 시작 아이콘, 현재 실행 블록 노란 강조 표시를 확인했다.
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 여러 활성 블록 묶음 동시 표시 적용 후 `entry-recording-20260701-142758.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.349100`, size `8206064`, video `h264 2560x1440`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-multi-active-stacks-frame-5s.png`에서 여러 Entry 원본 BlockView 스택이 격자로 표시되고 각 묶음의 현재 실행 블록 강조가 보임을 확인했다.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: 묶음별 오브젝트 표시/조립소 배경 적용 후 `entry-recording-20260701-143737.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.958500`, size `5773657`, video `h264 2560x1440`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-object-labeled-stack-frame-5s-wide.png`에서 stack 셀별 오브젝트 이름, 색상 마커, 블럭 수, 점무늬 배경을 확인했다.
 
 ## 남은 확인
 

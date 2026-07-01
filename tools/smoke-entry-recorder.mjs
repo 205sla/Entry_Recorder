@@ -131,8 +131,10 @@ class FakeCanvasRenderingContext2D {
   beginPath() {}
   moveTo() {}
   lineTo() {}
+  arc() {}
   arcTo() {}
   closePath() {}
+  clip() {}
   fill() {}
   stroke() {}
   strokeRect() {}

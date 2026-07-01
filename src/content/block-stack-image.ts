@@ -4,6 +4,7 @@ export interface BlockStackImageSnapshot {
   key: string
   rootBlockId: string
   currentBlockId: string
+  blockCount: number
   status: BlockStackImageStatus
   width: number
   height: number
@@ -64,8 +65,18 @@ function getFirstBlock(thread: any) {
     if (typeof thread.getFirstBlock === 'function') return thread.getFirstBlock()
   } catch {}
 
-  const blocks = typeof thread.getBlocks === 'function' ? thread.getBlocks() : thread.blocks
+  const blocks = getThreadBlocks(thread)
   return Array.isArray(blocks) ? blocks[0] : null
+}
+
+function getThreadBlocks(thread: any) {
+  if (!thread) return []
+
+  try {
+    return toArray(typeof thread.getBlocks === 'function' ? thread.getBlocks() : thread.blocks || thread._data)
+  } catch {
+    return []
+  }
 }
 
 function isEntryBlockLike(value: any) {
@@ -129,6 +140,44 @@ function getCodeFromBlock(block: any) {
   } catch {}
 
   return block?.thread?._code || null
+}
+
+function countBlockTree(block: any, seen = new Set<any>()): number {
+  if (!isEntryBlockLike(block) || seen.has(block)) return 0
+  seen.add(block)
+
+  const statementCount = toArray(block?.statements).reduce((count, statement) => {
+    if (typeof statement?.countBlock === 'function') {
+      try {
+        const value = Number(statement.countBlock())
+        if (Number.isFinite(value) && value > 0) return count + value
+      } catch {}
+    }
+
+    return count + getThreadBlocks(statement).reduce((sum, child) => sum + countBlockTree(child, seen), 0)
+  }, 0)
+
+  const paramCount = toArray(block?.params).reduce((count, param) => count + countBlockTree(param, seen), 0)
+
+  return 1 + statementCount + paramCount
+}
+
+function countRootStackBlocks(rootBlock: any) {
+  const thread = rootBlock?.thread
+
+  if (typeof thread?.countBlock === 'function') {
+    try {
+      const value = Number(thread.countBlock())
+      if (Number.isFinite(value) && value > 0) return value
+    } catch {}
+  }
+
+  const blocks = getThreadBlocks(thread)
+  const count = blocks.length
+    ? blocks.reduce((sum, block) => sum + countBlockTree(block), 0)
+    : countBlockTree(rootBlock)
+
+  return Math.max(1, count || 1)
 }
 
 function collectCodeObjects(entry: any) {
@@ -501,6 +550,7 @@ export function createBlockStackImageCache(runtimeWindow: any, entry: any): Bloc
       key,
       rootBlockId: getBlockId(rootBlock),
       currentBlockId: getBlockId(currentBlock),
+      blockCount: countRootStackBlocks(rootBlock),
       status: 'loading',
       width: 1,
       height: 1,

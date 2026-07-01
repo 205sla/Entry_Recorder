@@ -2,7 +2,9 @@ import type { ActiveStackImage, RunningBlockEvent, RunningBlockToken, RuntimeTra
 
 const FONT_FAMILY = `"Nanum Gothic", "Noto Sans KR", Arial, sans-serif`
 const PANEL_RATIO = 0.38
+const DENSE_PANEL_RATIO = 0.44
 const MAX_BLOCKS = 5
+const OBJECT_ACCENTS = ['#111827', '#2563EB', '#16A34A', '#EA580C', '#9333EA', '#0F766E', '#DB2777']
 
 interface TokenLayout {
   kind: RunningBlockToken['kind']
@@ -63,6 +65,29 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) 
     next = next.slice(0, -1)
   }
   return `${next}...`
+}
+
+function hashText(text: string) {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash)
+}
+
+function getObjectAccent(event: RunningBlockEvent | null) {
+  if (!event) return OBJECT_ACCENTS[0]
+  return OBJECT_ACCENTS[hashText(event.objectId || event.objectName) % OBJECT_ACCENTS.length]
+}
+
+function getObjectLabel(event: RunningBlockEvent | null) {
+  if (!event) return '오브젝트'
+  return event.objectName + (event.isClone ? ' (복제본)' : '')
+}
+
+function getObjectInitial(event: RunningBlockEvent | null) {
+  const label = getObjectLabel(event).replace(/\s+/g, '')
+  return Array.from(label)[0] || 'O'
 }
 
 function normalizeTokens(event: RunningBlockEvent): RunningBlockToken[] {
@@ -287,19 +312,79 @@ function drawBlock(
   return totalHeight
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, scale: number) {
-  ctx.fillStyle = 'rgba(247, 253, 255, 0.94)'
-  drawRoundRect(ctx, x, y, w, h, Math.round(10 * scale))
-  ctx.fill()
+function drawAssemblyBackground(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  scale: number,
+  radius: number
+) {
+  ctx.save()
+  drawRoundRect(ctx, x, y, w, h, radius)
+  ctx.clip()
 
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.24)'
-  const gap = Math.round(16 * scale)
+  ctx.fillStyle = '#F8FDFF'
+  ctx.fillRect(x, y, w, h)
+
+  ctx.fillStyle = 'rgba(129, 212, 245, 0.34)'
+  const gap = Math.max(9, Math.round(13 * scale))
   const dot = Math.max(1, Math.round(2 * scale))
-  for (let dotY = y + gap; dotY < y + h - gap / 2; dotY += gap) {
-    for (let dotX = x + gap; dotX < x + w - gap / 2; dotX += gap) {
-      ctx.fillRect(dotX, dotY, dot, dot)
+  const startX = x + gap - (((x % gap) + gap) % gap)
+  const startY = y + gap - (((y % gap) + gap) % gap)
+
+  for (let dotY = startY; dotY < y + h; dotY += gap) {
+    for (let dotX = startX; dotX < x + w; dotX += gap) {
+      ctx.fillRect(Math.round(dotX), Math.round(dotY), dot, dot)
     }
   }
+
+  ctx.restore()
+}
+
+function strokeAssemblyFrame(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  scale: number,
+  radius: number
+) {
+  drawRoundRect(ctx, x, y, w, h, radius)
+  ctx.strokeStyle = 'rgba(186, 230, 253, 0.95)'
+  ctx.lineWidth = Math.max(1, Math.round(1.2 * scale))
+  ctx.stroke()
+}
+
+function drawObjectMarker(
+  ctx: CanvasRenderingContext2D,
+  event: RunningBlockEvent | null,
+  x: number,
+  y: number,
+  size: number,
+  scale: number
+) {
+  const radius = Math.round(6 * scale)
+  drawRoundRect(ctx, x, y, size, size, radius)
+  ctx.fillStyle = '#FFFFFF'
+  ctx.fill()
+  ctx.strokeStyle = '#D7EAF5'
+  ctx.lineWidth = Math.max(1, scale)
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(x + size / 2, y + size / 2, size * 0.32, 0, Math.PI * 2)
+  ctx.fillStyle = getObjectAccent(event)
+  ctx.fill()
+
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `800 ${Math.max(9, Math.round(size * 0.38))}px ${FONT_FAMILY}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(getObjectInitial(event), x + size / 2, y + size / 2 + Math.round(0.5 * scale))
+  ctx.textAlign = 'left'
 }
 
 function drawHeader(
@@ -311,15 +396,10 @@ function drawHeader(
   scale: number
 ) {
   const current = snapshot.current
-  const objectName = current ? current.objectName + (current.isClone ? ' (복제본)' : '') : '오브젝트'
+  const objectName = getObjectLabel(current)
   const fontSize = Math.max(18, Math.round(22 * scale))
 
-  drawRoundRect(ctx, x, y, Math.round(34 * scale), Math.round(34 * scale), Math.round(8 * scale))
-  ctx.fillStyle = '#F8FAFC'
-  ctx.fill()
-  drawRoundRect(ctx, x + Math.round(6 * scale), y + Math.round(6 * scale), Math.round(22 * scale), Math.round(22 * scale), Math.round(11 * scale))
-  ctx.fillStyle = '#111827'
-  ctx.fill()
+  drawObjectMarker(ctx, current, x, y, Math.round(34 * scale), scale)
 
   ctx.fillStyle = '#0F172A'
   ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`
@@ -346,6 +426,57 @@ function drawHeader(
   ctx.fillText(badgeText, x + panelWidth - badgeWidth + Math.round(13 * scale), y + Math.round(18 * scale))
 }
 
+function drawStackHeader(
+  ctx: CanvasRenderingContext2D,
+  stack: ActiveStackImage,
+  x: number,
+  y: number,
+  width: number,
+  scale: number
+) {
+  const compact = width < 160 * scale
+  const markerSize = Math.round((compact ? 22 : 26) * scale)
+  const fontSize = Math.max(11, Math.round((compact ? 13 : 15) * scale))
+  const badgeFontSize = Math.max(10, Math.round((compact ? 12 : 13) * scale))
+  const headerMiddle = y + markerSize / 2
+  const blockCount = Math.max(1, stack.stackImage.blockCount || 1)
+  const badgeText = compact ? `${blockCount}개` : `블록 ${blockCount}개`
+
+  drawObjectMarker(ctx, stack.event, x, y, markerSize, scale)
+
+  ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`
+  ctx.fillStyle = '#1F2937'
+  ctx.textBaseline = 'middle'
+
+  const badgePadding = Math.round(11 * scale)
+  ctx.font = `700 ${badgeFontSize}px ${FONT_FAMILY}`
+  const preferredBadgeWidth = ctx.measureText(badgeText).width + badgePadding * 2
+  const badgeWidth = Math.min(Math.max(Math.round((compact ? 38 : 54) * scale), preferredBadgeWidth), width * (compact ? 0.34 : 0.44))
+  const badgeHeight = Math.round(24 * scale)
+  const badgeX = x + width - badgeWidth
+  const badgeY = y + Math.round(1 * scale)
+
+  ctx.font = `700 ${fontSize}px ${FONT_FAMILY}`
+  const nameX = x + markerSize + Math.round(10 * scale)
+  const nameMaxWidth = Math.max(24 * scale, badgeX - nameX - Math.round(8 * scale))
+  ctx.fillText(fitText(ctx, getObjectLabel(stack.event), nameMaxWidth), nameX, headerMiddle)
+
+  drawRoundRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, badgeHeight / 2)
+  ctx.fillStyle = '#FFFFFF'
+  ctx.fill()
+  ctx.strokeStyle = '#CBD5E1'
+  ctx.lineWidth = Math.max(1, scale)
+  ctx.stroke()
+
+  ctx.font = `700 ${badgeFontSize}px ${FONT_FAMILY}`
+  ctx.fillStyle = '#475569'
+  ctx.fillText(
+    fitText(ctx, badgeText, badgeWidth - badgePadding * 1.2),
+    badgeX + badgePadding,
+    badgeY + badgeHeight / 2
+  )
+}
+
 function drawStackImage(
   ctx: CanvasRenderingContext2D,
   stack: ActiveStackImage,
@@ -364,24 +495,30 @@ function drawStackImage(
   const sourceHeight = stackImage?.height || image.naturalHeight || image.height
   if (!sourceWidth || !sourceHeight) return false
 
+  const radius = Math.round(8 * scale)
+  const headerHeight = Math.round(34 * scale)
   const imagePadding = Math.round(12 * scale)
+  const imageTop = y + headerHeight + Math.round(10 * scale)
+  const imageHeight = height - headerHeight - Math.round(10 * scale)
   const maxWidth = width - imagePadding * 2
-  const maxHeight = height - imagePadding * 2
+  const maxHeight = imageHeight - imagePadding
+  if (maxWidth <= 0 || maxHeight <= 0) return false
+
   const ratio = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale)
   const drawWidth = Math.max(1, Math.round(sourceWidth * ratio))
   const drawHeight = Math.max(1, Math.round(sourceHeight * ratio))
-  const drawX = x + Math.round((width - drawWidth) / 2)
-  const drawY = y + Math.round((height - drawHeight) / 2)
+  const drawX = x + imagePadding
+  const drawY = imageTop + Math.round(imagePadding / 2)
 
   ctx.save()
-  drawRoundRect(ctx, x, y, width, height, Math.round(8 * scale))
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.48)'
-  ctx.fill()
-  ctx.shadowColor = 'rgba(15, 23, 42, 0.14)'
-  ctx.shadowBlur = Math.round(12 * scale)
-  ctx.shadowOffsetY = Math.round(3 * scale)
+  drawAssemblyBackground(ctx, x, y, width, height, scale, radius)
+  strokeAssemblyFrame(ctx, x, y, width, height, scale, radius)
+  drawStackHeader(ctx, stack, x + imagePadding, y + imagePadding, width - imagePadding * 2, scale)
 
   try {
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.13)'
+    ctx.shadowBlur = Math.round(10 * scale)
+    ctx.shadowOffsetY = Math.round(2 * scale)
     ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
   } catch {
     ctx.restore()
@@ -463,8 +600,10 @@ export function drawOverlay(
 ) {
   const scale = clamp(width / 2560, 0.72, 1.25)
   const margin = Math.round(width * 0.025)
-  const panelWidth = Math.round(Math.min(width * PANEL_RATIO, 880 * scale))
-  const panelHeight = Math.round(Math.min(height * 0.48, 560 * scale))
+  const readyStackCount = getReadyStackImages(snapshot).length
+  const denseStacks = readyStackCount > 1
+  const panelWidth = Math.round(Math.min(width * (denseStacks ? DENSE_PANEL_RATIO : PANEL_RATIO), (denseStacks ? 1040 : 880) * scale))
+  const panelHeight = Math.round(Math.min(height * (denseStacks ? 0.52 : 0.48), (denseStacks ? 640 : 560) * scale))
   const x = width - panelWidth - margin
   const y = margin
   const padding = Math.round(24 * scale)
@@ -473,22 +612,25 @@ export function drawOverlay(
   ctx.shadowColor = 'rgba(15, 23, 42, 0.18)'
   ctx.shadowBlur = Math.round(24 * scale)
   ctx.shadowOffsetY = Math.round(8 * scale)
-  drawGrid(ctx, x, y, panelWidth, panelHeight, scale)
+  drawAssemblyBackground(ctx, x, y, panelWidth, panelHeight, scale, Math.round(10 * scale))
+  strokeAssemblyFrame(ctx, x, y, panelWidth, panelHeight, scale, Math.round(10 * scale))
   ctx.shadowBlur = 0
   ctx.shadowOffsetY = 0
 
-  drawHeader(ctx, snapshot, x + padding, y + padding, panelWidth - padding * 2, scale)
-
   const blockX = x + padding
   const blockMaxWidth = panelWidth - padding * 2
-  let cursorY = y + padding + Math.round(58 * scale)
   const events = getDisplayEvents(snapshot)
-  const stackImageHeight = y + panelHeight - padding - cursorY
+  const stackImageY = y + padding
+  const stackImageHeight = panelHeight - padding * 2
 
-  if (drawStackImagesPanel(ctx, snapshot, blockX, cursorY, blockMaxWidth, stackImageHeight, scale)) {
+  if (drawStackImagesPanel(ctx, snapshot, blockX, stackImageY, blockMaxWidth, stackImageHeight, scale)) {
     ctx.restore()
     return
   }
+
+  drawHeader(ctx, snapshot, x + padding, y + padding, panelWidth - padding * 2, scale)
+
+  let cursorY = y + padding + Math.round(58 * scale)
 
   if (!events.length) {
     drawRoundRect(ctx, blockX, cursorY, blockMaxWidth, Math.round(52 * scale), Math.round(14 * scale))
