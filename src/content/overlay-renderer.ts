@@ -1,4 +1,4 @@
-import type { RunningBlockEvent, RunningBlockToken, RuntimeTraceSnapshot } from './runtime-tracer'
+import type { ActiveStackImage, RunningBlockEvent, RunningBlockToken, RuntimeTraceSnapshot } from './runtime-tracer'
 
 const FONT_FAMILY = `"Nanum Gothic", "Noto Sans KR", Arial, sans-serif`
 const PANEL_RATIO = 0.38
@@ -346,16 +346,17 @@ function drawHeader(
   ctx.fillText(badgeText, x + panelWidth - badgeWidth + Math.round(13 * scale), y + Math.round(18 * scale))
 }
 
-function drawStackImagePanel(
+function drawStackImage(
   ctx: CanvasRenderingContext2D,
-  snapshot: RuntimeTraceSnapshot,
+  stack: ActiveStackImage,
   x: number,
   y: number,
   width: number,
   height: number,
-  scale: number
+  scale: number,
+  maxScale = 2.4
 ) {
-  const stackImage = snapshot.stackImage
+  const stackImage = stack.stackImage
   const image = stackImage?.status === 'ready' ? stackImage.image : null
   if (!image) return false
 
@@ -366,7 +367,7 @@ function drawStackImagePanel(
   const imagePadding = Math.round(12 * scale)
   const maxWidth = width - imagePadding * 2
   const maxHeight = height - imagePadding * 2
-  const ratio = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, 2.4)
+  const ratio = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale)
   const drawWidth = Math.max(1, Math.round(sourceWidth * ratio))
   const drawHeight = Math.max(1, Math.round(sourceHeight * ratio))
   const drawX = x + Math.round((width - drawWidth) / 2)
@@ -389,6 +390,61 @@ function drawStackImagePanel(
 
   ctx.restore()
   return true
+}
+
+function getReadyStackImages(snapshot: RuntimeTraceSnapshot): ActiveStackImage[] {
+  const stacks = snapshot.stackImages.filter(stack =>
+    stack.stackImage.status === 'ready' && !!stack.stackImage.image
+  )
+
+  if (stacks.length) return stacks
+
+  if (snapshot.current && snapshot.stackImage?.status === 'ready' && snapshot.stackImage.image) {
+    return [{ event: snapshot.current, stackImage: snapshot.stackImage }]
+  }
+
+  return []
+}
+
+function getGridSize(count: number, width: number, height: number) {
+  const columns = clamp(Math.ceil(Math.sqrt(count * (width / Math.max(1, height)))), 1, count)
+  return {
+    columns,
+    rows: Math.ceil(count / columns),
+  }
+}
+
+function drawStackImagesPanel(
+  ctx: CanvasRenderingContext2D,
+  snapshot: RuntimeTraceSnapshot,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scale: number
+) {
+  const stacks = getReadyStackImages(snapshot)
+  if (!stacks.length) return false
+
+  if (stacks.length === 1) {
+    return drawStackImage(ctx, stacks[0], x, y, width, height, scale)
+  }
+
+  const gap = Math.round(12 * scale)
+  const { columns, rows } = getGridSize(stacks.length, width, height)
+  const cellWidth = (width - gap * (columns - 1)) / columns
+  const cellHeight = (height - gap * (rows - 1)) / rows
+
+  let drewAny = false
+  stacks.forEach((stack, index) => {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const cellX = x + column * (cellWidth + gap)
+    const cellY = y + row * (cellHeight + gap)
+    drewAny = drawStackImage(ctx, stack, cellX, cellY, cellWidth, cellHeight, scale, 2.1) || drewAny
+  })
+
+  return drewAny
 }
 
 function getDisplayEvents(snapshot: RuntimeTraceSnapshot) {
@@ -429,7 +485,7 @@ export function drawOverlay(
   const events = getDisplayEvents(snapshot)
   const stackImageHeight = y + panelHeight - padding - cursorY
 
-  if (drawStackImagePanel(ctx, snapshot, blockX, cursorY, blockMaxWidth, stackImageHeight, scale)) {
+  if (drawStackImagesPanel(ctx, snapshot, blockX, cursorY, blockMaxWidth, stackImageHeight, scale)) {
     ctx.restore()
     return
   }

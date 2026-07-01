@@ -24,11 +24,23 @@ export interface RuntimeTraceSnapshot {
   current: RunningBlockEvent | null
   recent: RunningBlockEvent[]
   stackImage: BlockStackImageSnapshot | null
+  stackImages: ActiveStackImage[]
 }
 
 interface TraceRegistry {
   listeners: Set<(scope: any, entity: any) => void>
   originalRun: Function
+}
+
+export interface ActiveStackImage {
+  event: RunningBlockEvent
+  stackImage: BlockStackImageSnapshot
+}
+
+interface ActiveStackState {
+  event: RunningBlockEvent
+  stackImageKey: string
+  updatedAt: number
 }
 
 interface RuntimeTracerOptions {
@@ -38,6 +50,7 @@ interface RuntimeTracerOptions {
 const REGISTRY_KEY = '__entryRecorderTraceRegistry'
 const MAX_RECENT = 5
 const DUPLICATE_INTERVAL_MS = 120
+const ACTIVE_STACK_TTL_MS = 1200
 const FALLBACK_COLORS = {
   START: { color: '#10D35E', outerLine: '#13BF68' },
   FLOW: { color: '#31C1EC', outerLine: '#08ACDD' },
@@ -289,10 +302,30 @@ function ensureTraceRegistry(entry: any): TraceRegistry | null {
 export function createRuntimeTracer(entry: any, runtimeWindow: any = window, options: RuntimeTracerOptions = {}) {
   const registry = ensureTraceRegistry(entry)
   const recent: RunningBlockEvent[] = []
+  const activeStacks = new Map<string, ActiveStackState>()
   let current: RunningBlockEvent | null = null
   let currentStackImageKey = ''
   let lastKey = ''
   let lastTime = 0
+
+  function removeExpiredStacks(now: number) {
+    activeStacks.forEach((stack, key) => {
+      if (now - stack.updatedAt > ACTIVE_STACK_TTL_MS) {
+        activeStacks.delete(key)
+      }
+    })
+  }
+
+  function getActiveStackImages(now: number): ActiveStackImage[] {
+    removeExpiredStacks(now)
+
+    return Array.from(activeStacks.values())
+      .map(stack => {
+        const stackImage = options.blockImages?.get(stack.stackImageKey)
+        return stackImage ? { event: stack.event, stackImage } : null
+      })
+      .filter((stack): stack is ActiveStackImage => !!stack)
+  }
 
   const onRunBlock = (scope: any, entity: any) => {
     const event = createEvent(entry, runtimeWindow, scope, entity)
@@ -304,7 +337,18 @@ export function createRuntimeTracer(entry: any, runtimeWindow: any = window, opt
     lastKey = key
     lastTime = event.time
     current = event
-    currentStackImageKey = options.blockImages?.request(scope?.block)?.key || ''
+    const stackImage = options.blockImages?.request(scope?.block)
+    currentStackImageKey = stackImage?.key || ''
+
+    if (stackImage) {
+      activeStacks.set(`${event.objectId}:${stackImage.rootBlockId}`, {
+        event,
+        stackImageKey: stackImage.key,
+        updatedAt: event.time,
+      })
+      removeExpiredStacks(event.time)
+    }
+
     recent.unshift(event)
     recent.splice(MAX_RECENT)
   }
@@ -317,10 +361,12 @@ export function createRuntimeTracer(entry: any, runtimeWindow: any = window, opt
         current,
         recent: recent.slice(),
         stackImage: currentStackImageKey ? options.blockImages?.get(currentStackImageKey) || null : null,
+        stackImages: getActiveStackImages(performance.now()),
       }
     },
     dispose() {
       registry?.listeners.delete(onRunBlock)
+      activeStacks.clear()
     },
   }
 }

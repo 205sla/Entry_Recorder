@@ -65,6 +65,13 @@
 - SVG 내부 이미지 아이콘은 Blob SVG 안에서 깨질 수 있어 fetch 후 data URL로 인라인한다.
 - 원본 stack 이미지가 준비된 프레임부터 영상 오버레이는 실제 Entry 블록 이미지로 전환된다. 이미지 생성이 실패하거나 view를 만들 수 없는 환경에서는 기존 canvas 블록 패널로 fallback 한다.
 
+## 2026-07-01 여러 활성 블록 묶음 동시 표시
+
+- `Scope.run`에서 실행 이벤트가 들어올 때마다 해당 block의 root stack 이미지를 활성 목록에 등록한다.
+- 활성 묶음 기준은 `오브젝트/클론 id + root block id`이다. 같은 묶음 안에서 다음 block이 실행되면 새 칸을 만들지 않고 같은 stack 이미지의 현재 실행 강조만 갱신한다.
+- Entry 런타임이 현재 실행 중인 전체 thread 목록을 안정적인 공개 API로 제공하지 않기 때문에, 최근 `1200ms` 안에 실행 이벤트가 들어온 stack을 동작 중인 묶음으로 본다.
+- 동시에 준비된 stack 이미지가 여러 개면 기존 오버레이 영역 안에서 격자로 배치한다. 준비된 원본 이미지가 없으면 기존처럼 단일 현재 stack 또는 canvas fallback 패널을 사용한다.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
@@ -75,6 +82,8 @@
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 블록 이미지 오버레이 적용 후 `entry-recording-20260701-010809.mp4` 다운로드 성공, 5초 프레임에서 한국어 블록/인자 capsule/단일 `NOW` 표시 확인
 - 실제 작품 `6a3781996e2f06d9323a9bec`: Entry 원본 BlockView 스택 오버레이 적용 후 `entry-recording-20260701-141840.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.512800`, size `7417945`, video `h264 2560x1440`, audio `aac`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-block-stack-frame-5s-inline-icons.png`에서 원본 Entry 블록 스택, 시작 아이콘, 현재 실행 블록 노란 강조 표시를 확인했다.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: 여러 활성 블록 묶음 동시 표시 적용 후 `entry-recording-20260701-142758.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.349100`, size `8206064`, video `h264 2560x1440`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-multi-active-stacks-frame-5s.png`에서 여러 Entry 원본 BlockView 스택이 격자로 표시되고 각 묶음의 현재 실행 블록 강조가 보임을 확인했다.
 
 ## 남은 확인
 
