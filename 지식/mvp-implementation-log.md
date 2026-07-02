@@ -80,6 +80,15 @@
 - 패널과 각 stack 셀의 배경을 단색 카드가 아닌 Entry 블럭 조립소 느낌의 밝은 점무늬 작업창 배경으로 통일했다.
 - 활성 stack이 2개 이상이면 패널을 조금 넓고 높게 잡고, 좁은 셀에서는 badge를 `5개`처럼 축약해 오브젝트 이름 공간을 확보한다.
 
+## 2026-07-02 실시간 녹화 렉 완화 1차
+
+- MediaRecorder/captureStream은 wall clock 기반이라 메인 스레드가 밀린 구간을 완전히 없앨 수 없다. 완전한 "느려도 부드러운" 녹화는 이후 WebCodecs/프레임 스텝 구조가 필요하다.
+- 현 구조 안에서 제거 가능한 낭비를 먼저 줄였다. `compositor`가 원본 Entry canvas와 오버레이 canvas를 분리하고, trace snapshot cache key가 바뀔 때만 `drawOverlay()`를 다시 실행한다.
+- 매 합성 프레임은 원본 canvas drawImage + 캐시된 overlay canvas drawImage 중심으로 동작한다. 점무늬 배경, 텍스트 측정, stack 셀 렌더링은 실행 블록 상태가 바뀔 때만 다시 수행된다.
+- WebGL render hook 경로도 녹화 FPS(`30fps`) 기준으로 합성을 throttle 하여 Entry render가 60fps로 호출되어도 합성은 매 render마다 수행하지 않는다.
+- `runtime-tracer`는 `createEvent()` 전에 `objectId:blockId:blockType` cheap key로 중복 실행을 먼저 걸러, 반복 실행에서 Lang 템플릿/param/style 계산을 줄인다.
+- `block-stack-image`는 block 객체별 `request()` 결과를 WeakMap으로 재사용해 같은 block의 root stack 탐색과 key 계산 반복을 줄인다.
+
 ## 검증
 
 - `npm install --package-lock=false --ignore-scripts`
@@ -94,6 +103,8 @@
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-multi-active-stacks-frame-5s.png`에서 여러 Entry 원본 BlockView 스택이 격자로 표시되고 각 묶음의 현재 실행 블록 강조가 보임을 확인했다.
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 묶음별 오브젝트 표시/조립소 배경 적용 후 `entry-recording-20260701-143737.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.958500`, size `5773657`, video `h264 2560x1440`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-object-labeled-stack-frame-5s-wide.png`에서 stack 셀별 오브젝트 이름, 색상 마커, 블럭 수, 점무늬 배경을 확인했다.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: 오버레이 캐시/합성 throttle 적용 후 `entry-recording-20260702-160117.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.559100`, size `7829577`, video `h264 2560x1440`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-overlay-cache-frame-5s.png`에서 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
 
 ## 남은 확인
 

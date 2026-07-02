@@ -476,6 +476,7 @@ function loadSvgImage(runtimeWindow: any, imageData: SvgImageData): Promise<{ im
 
 export function createBlockStackImageCache(runtimeWindow: any, entry: any): BlockStackImageCache {
   const cache = new Map<string, CacheEntry>()
+  const requestCache = new WeakMap<object, BlockStackImageSnapshot>()
   const offscreenViews: OffscreenCodeView[] = []
   const offscreenCodeMap = new WeakMap<object, OffscreenCodeView>()
 
@@ -576,6 +577,11 @@ export function createBlockStackImageCache(runtimeWindow: any, entry: any): Bloc
   }
 
   function request(block: any): BlockStackImageSnapshot | null {
+    if (block && typeof block === 'object') {
+      const cached = requestCache.get(block)
+      if (cached) return cached
+    }
+
     ensureCodeView(getCodeFromBlock(block))
 
     const rootBlock = getRootBlock(block)
@@ -588,6 +594,10 @@ export function createBlockStackImageCache(runtimeWindow: any, entry: any): Bloc
     if (!entryData) {
       entryData = createEntry(rootBlock, block)
       cache.set(key, entryData)
+    }
+
+    if (block && typeof block === 'object') {
+      requestCache.set(block, entryData)
     }
 
     return entryData

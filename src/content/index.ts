@@ -296,7 +296,10 @@ async function startRecording() {
     const useWebGL = !!runtime.Entry.options?.useWebGL
     const app = useWebGL ? runtime.Entry.stage?._app : null
     const originalRender = typeof app?.render === 'function' ? app.render.bind(app) : null
-    const compositor = createCompositor(runtime.canvas, DEFAULT_WIDTH, DEFAULT_HEIGHT, tracer, { manual: !!originalRender })
+    const compositor = createCompositor(runtime.canvas, DEFAULT_WIDTH, DEFAULT_HEIGHT, tracer, {
+      frameRate: DEFAULT_FPS,
+      manual: !!originalRender,
+    })
     stopCompositor = compositor.stop
 
     if (app && originalRender) {

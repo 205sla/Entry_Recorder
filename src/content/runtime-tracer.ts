@@ -251,18 +251,29 @@ function formatLabel(tokens: RunningBlockToken[]) {
   return tokens.map(token => token.text).join(' ').replace(/\s+/g, ' ').trim()
 }
 
-function createEvent(entry: any, runtimeWindow: any, scope: any, entity: any): RunningBlockEvent | null {
+function createEvent(
+  entry: any,
+  runtimeWindow: any,
+  scope: any,
+  entity: any,
+  base: {
+    blockId?: string
+    blockType?: string
+    objectId?: string
+    time?: number
+  } = {}
+): RunningBlockEvent | null {
   const block = scope?.block
-  const blockType = getBlockType(block)
+  const blockType = base.blockType || getBlockType(block)
   if (!block || !blockType) return null
   const tokens = createLabelTokens(entry, block, runtimeWindow)
   const style = getBlockStyle(entry, blockType)
 
   return {
-    time: performance.now(),
-    objectId: getObjectId(entity),
+    time: base.time ?? performance.now(),
+    objectId: base.objectId || getObjectId(entity),
     objectName: getObjectName(entity),
-    blockId: getBlockId(block),
+    blockId: base.blockId || getBlockId(block),
     blockType,
     label: formatLabel(tokens),
     tokens,
@@ -328,14 +339,26 @@ export function createRuntimeTracer(entry: any, runtimeWindow: any = window, opt
   }
 
   const onRunBlock = (scope: any, entity: any) => {
-    const event = createEvent(entry, runtimeWindow, scope, entity)
-    if (!event) return
+    const block = scope?.block
+    const blockType = getBlockType(block)
+    if (!block || !blockType) return
 
-    const key = `${event.objectId}:${event.blockId}:${event.blockType}`
-    if (key === lastKey && event.time - lastTime < DUPLICATE_INTERVAL_MS) return
+    const now = performance.now()
+    const objectId = getObjectId(entity)
+    const blockId = getBlockId(block)
+    const key = `${objectId}:${blockId}:${blockType}`
+    if (key === lastKey && now - lastTime < DUPLICATE_INTERVAL_MS) return
 
     lastKey = key
-    lastTime = event.time
+    lastTime = now
+    const event = createEvent(entry, runtimeWindow, scope, entity, {
+      blockId,
+      blockType,
+      objectId,
+      time: now,
+    })
+    if (!event) return
+
     current = event
     const stackImage = options.blockImages?.request(scope?.block)
     currentStackImageKey = stackImage?.key || ''
