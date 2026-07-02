@@ -88,6 +88,7 @@
 - WebGL render hook 경로도 녹화 FPS(`30fps`) 기준으로 합성을 throttle 하여 Entry render가 60fps로 호출되어도 합성은 매 render마다 수행하지 않는다.
 - `runtime-tracer`는 `createEvent()` 전에 `objectId:blockId:blockType` cheap key로 중복 실행을 먼저 걸러, 반복 실행에서 Lang 템플릿/param/style 계산을 줄인다.
 - `block-stack-image`는 block 객체별 `request()` 결과를 WeakMap으로 재사용해 같은 block의 root stack 탐색과 key 계산 반복을 줄인다.
+- 점무늬 조립소 배경은 매 셀마다 수천 번 `fillRect()`를 호출하지 않고, scale별 작은 canvas tile을 `CanvasPattern`으로 캐시해 반복 채움으로 그린다. `createPattern()`이 없는 테스트/구형 환경에서는 기존 직접 렌더링으로 fallback 한다.
 
 ## 검증
 
@@ -105,6 +106,8 @@
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-object-labeled-stack-frame-5s-wide.png`에서 stack 셀별 오브젝트 이름, 색상 마커, 블럭 수, 점무늬 배경을 확인했다.
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 오버레이 캐시/합성 throttle 적용 후 `entry-recording-20260702-160117.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.559100`, size `7829577`, video `h264 2560x1440`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-overlay-cache-frame-5s.png`에서 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: 조립소 배경 `CanvasPattern` 캐시 적용 후 `entry-recording-20260702-162340.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.466300`, size `7982964`, video `h264 2560x1440`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-pattern-cache-frame-5s.png`에서 점무늬 배경과 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
 
 ## 남은 확인
 

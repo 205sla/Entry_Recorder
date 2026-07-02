@@ -5,6 +5,7 @@ const PANEL_RATIO = 0.38
 const DENSE_PANEL_RATIO = 0.44
 const MAX_BLOCKS = 5
 const OBJECT_ACCENTS = ['#111827', '#2563EB', '#16A34A', '#EA580C', '#9333EA', '#0F766E', '#DB2777']
+const assemblyPatternCache = new Map<string, CanvasPattern | null>()
 
 interface TokenLayout {
   kind: RunningBlockToken['kind']
@@ -328,9 +329,18 @@ function drawAssemblyBackground(
   ctx.fillStyle = '#F8FDFF'
   ctx.fillRect(x, y, w, h)
 
-  ctx.fillStyle = 'rgba(129, 212, 245, 0.34)'
   const gap = Math.max(9, Math.round(13 * scale))
   const dot = Math.max(1, Math.round(2 * scale))
+  const pattern = getAssemblyPattern(ctx, gap, dot)
+
+  if (pattern) {
+    ctx.fillStyle = pattern
+    ctx.fillRect(x, y, w, h)
+    ctx.restore()
+    return
+  }
+
+  ctx.fillStyle = 'rgba(129, 212, 245, 0.34)'
   const startX = x + gap - (((x % gap) + gap) % gap)
   const startY = y + gap - (((y % gap) + gap) % gap)
 
@@ -341,6 +351,31 @@ function drawAssemblyBackground(
   }
 
   ctx.restore()
+}
+
+function getAssemblyPattern(ctx: CanvasRenderingContext2D, gap: number, dot: number) {
+  if (typeof ctx.createPattern !== 'function') return null
+
+  const key = `${gap}:${dot}`
+  if (assemblyPatternCache.has(key)) return assemblyPatternCache.get(key) || null
+
+  const ownerDocument = ctx.canvas?.ownerDocument || document
+  const tile = ownerDocument.createElement('canvas')
+  tile.width = gap
+  tile.height = gap
+
+  const tileCtx = tile.getContext('2d')
+  if (!tileCtx) {
+    assemblyPatternCache.set(key, null)
+    return null
+  }
+
+  tileCtx.fillStyle = 'rgba(129, 212, 245, 0.34)'
+  tileCtx.fillRect(0, 0, dot, dot)
+
+  const pattern = ctx.createPattern(tile, 'repeat')
+  assemblyPatternCache.set(key, pattern)
+  return pattern
 }
 
 function strokeAssemblyFrame(
