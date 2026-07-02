@@ -251,7 +251,7 @@ function createRaf(smoke) {
         timers.delete(id)
         smoke.rafCalls += 1
         callback(Date.now())
-      }, 0)
+      }, 35)
       timers.set(id, timer)
       return id
     },

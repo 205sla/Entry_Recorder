@@ -89,6 +89,8 @@
 - `runtime-tracer`는 `createEvent()` 전에 `objectId:blockId:blockType` cheap key로 중복 실행을 먼저 걸러, 반복 실행에서 Lang 템플릿/param/style 계산을 줄인다.
 - `block-stack-image`는 block 객체별 `request()` 결과를 WeakMap으로 재사용해 같은 block의 root stack 탐색과 key 계산 반복을 줄인다.
 - 점무늬 조립소 배경은 매 셀마다 수천 번 `fillRect()`를 호출하지 않고, scale별 작은 canvas tile을 `CanvasPattern`으로 캐시해 반복 채움으로 그린다. `createPattern()`이 없는 테스트/구형 환경에서는 기존 직접 렌더링으로 fallback 한다.
+- 합성 throttle 판정에는 `8ms` tolerance를 둔다. Entry/WebGL render가 약 16ms tick으로 들어올 때 `33.33ms` 경계 때문에 3번째 tick마다 그려지는 문제를 피하고, 30fps 녹화에서 매 2번째 tick 중심으로 안정적으로 합성되게 한다.
+- smoke harness의 fake RAF는 `setTimeout(0)` 대신 `35ms` 간격을 사용한다. compositor throttle과 이벤트 실행 순서가 우연히 엇갈려 오버레이 텍스트가 한 번도 그려지지 않는 flaky 케이스를 줄이기 위한 테스트 안정화다.
 
 ## 검증
 
@@ -108,6 +110,9 @@
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-overlay-cache-frame-5s.png`에서 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
 - 실제 작품 `6a3781996e2f06d9323a9bec`: 조립소 배경 `CanvasPattern` 캐시 적용 후 `entry-recording-20260702-162340.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.466300`, size `7982964`, video `h264 2560x1440`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-pattern-cache-frame-5s.png`에서 점무늬 배경과 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
+- compositor throttle tolerance/smoke RAF 안정화 적용 후 `node tools\smoke-entry-recorder.mjs` 8회 반복 실행, 총 64개 케이스 성공.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: throttle tolerance 적용 후 `entry-recording-20260702-205226.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.440267`, size `8764256`, video `h264 2560x1440`, 평균 비디오 `27.02 fps`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-frame-throttle-tolerance-frame-5s.png`에서 여러 stack 셀 오버레이가 정상 유지됨을 확인했다.
 
 ## 남은 확인
 

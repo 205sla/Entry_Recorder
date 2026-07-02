@@ -1,6 +1,8 @@
 import { drawOverlay } from './overlay-renderer'
 import type { RuntimeTraceSnapshot } from './runtime-tracer'
 
+const FRAME_THROTTLE_TOLERANCE_MS = 8
+
 interface TraceSource {
   getSnapshot(): RuntimeTraceSnapshot
 }
@@ -82,7 +84,8 @@ export function createCompositor(
 
   function drawFrame(force = false) {
     const now = performance.now()
-    if (!force && now - lastDrawAt < frameIntervalMs) return false
+    const throttleThresholdMs = Math.max(0, frameIntervalMs - FRAME_THROTTLE_TOLERANCE_MS)
+    if (!force && now - lastDrawAt < throttleThresholdMs) return false
     lastDrawAt = now
 
     const snapshot = traceSource.getSnapshot()
