@@ -7,6 +7,18 @@ const MAX_BLOCKS = 5
 const OBJECT_ACCENTS = ['#111827', '#2563EB', '#16A34A', '#EA580C', '#9333EA', '#0F766E', '#DB2777']
 const assemblyPatternCache = new Map<string, CanvasPattern | null>()
 
+export type OverlayRenderMode = 'overlay' | 'fullscreen-code'
+
+interface DrawOverlayOptions {
+  mode?: OverlayRenderMode
+}
+
+interface StackImageDrawOptions {
+  background?: boolean
+  align?: 'start' | 'center'
+  shadow?: boolean
+}
+
 interface TokenLayout {
   kind: RunningBlockToken['kind']
   text: string
@@ -520,7 +532,8 @@ function drawStackImage(
   width: number,
   height: number,
   scale: number,
-  maxScale = 2.4
+  maxScale = 2.4,
+  options: StackImageDrawOptions = {}
 ) {
   const stackImage = stack.stackImage
   const image = stackImage?.status === 'ready' ? stackImage.image : null
@@ -542,18 +555,26 @@ function drawStackImage(
   const ratio = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight, maxScale)
   const drawWidth = Math.max(1, Math.round(sourceWidth * ratio))
   const drawHeight = Math.max(1, Math.round(sourceHeight * ratio))
-  const drawX = x + imagePadding
-  const drawY = imageTop + Math.round(imagePadding / 2)
+  const drawX = options.align === 'center'
+    ? x + Math.round((width - drawWidth) / 2)
+    : x + imagePadding
+  const drawY = options.align === 'center'
+    ? imageTop + Math.round(Math.max(imagePadding / 2, (maxHeight - drawHeight) / 2))
+    : imageTop + Math.round(imagePadding / 2)
 
   ctx.save()
-  drawAssemblyBackground(ctx, x, y, width, height, scale, radius)
-  strokeAssemblyFrame(ctx, x, y, width, height, scale, radius)
+  if (options.background !== false) {
+    drawAssemblyBackground(ctx, x, y, width, height, scale, radius)
+    strokeAssemblyFrame(ctx, x, y, width, height, scale, radius)
+  }
   drawStackHeader(ctx, stack, x + imagePadding, y + imagePadding, width - imagePadding * 2, scale)
 
   try {
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.13)'
-    ctx.shadowBlur = Math.round(10 * scale)
-    ctx.shadowOffsetY = Math.round(2 * scale)
+    if (options.shadow !== false) {
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.13)'
+      ctx.shadowBlur = Math.round(10 * scale)
+      ctx.shadowOffsetY = Math.round(2 * scale)
+    }
     ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight)
   } catch {
     ctx.restore()
@@ -619,6 +640,60 @@ function drawStackImagesPanel(
   return drewAny
 }
 
+function drawFullscreenStackImages(
+  ctx: CanvasRenderingContext2D,
+  snapshot: RuntimeTraceSnapshot,
+  width: number,
+  height: number
+) {
+  const stacks = getReadyStackImages(snapshot)
+  if (!stacks.length) return false
+
+  const scale = clamp(width / 1280, 1.25, 2.45)
+  const marginX = Math.round(width * 0.035)
+  const marginY = Math.round(height * 0.045)
+  const availableWidth = width - marginX * 2
+  const availableHeight = height - marginY * 2
+  if (availableWidth <= 0 || availableHeight <= 0) return false
+
+  const options: StackImageDrawOptions = {
+    align: 'center',
+    background: false,
+    shadow: false,
+  }
+
+  if (stacks.length === 1) {
+    return drawStackImage(
+      ctx,
+      stacks[0],
+      marginX,
+      marginY,
+      availableWidth,
+      availableHeight,
+      scale,
+      6,
+      options
+    )
+  }
+
+  const gap = Math.round(18 * scale)
+  const { columns, rows } = getGridSize(stacks.length, availableWidth, availableHeight)
+  const cellWidth = (availableWidth - gap * (columns - 1)) / columns
+  const cellHeight = (availableHeight - gap * (rows - 1)) / rows
+  const maxImageScale = clamp(6 - stacks.length * 0.2, 3.2, 5.4)
+
+  let drewAny = false
+  stacks.forEach((stack, index) => {
+    const column = index % columns
+    const row = Math.floor(index / columns)
+    const cellX = marginX + column * (cellWidth + gap)
+    const cellY = marginY + row * (cellHeight + gap)
+    drewAny = drawStackImage(ctx, stack, cellX, cellY, cellWidth, cellHeight, scale, maxImageScale, options) || drewAny
+  })
+
+  return drewAny
+}
+
 function getDisplayEvents(snapshot: RuntimeTraceSnapshot) {
   const events = snapshot.recent.slice(0, MAX_BLOCKS).reverse()
   if (snapshot.current && !events.some(event => event === snapshot.current)) {
@@ -627,7 +702,43 @@ function getDisplayEvents(snapshot: RuntimeTraceSnapshot) {
   return events.slice(-MAX_BLOCKS)
 }
 
-export function drawOverlay(
+function drawFullscreenFallbackBlocks(
+  ctx: CanvasRenderingContext2D,
+  snapshot: RuntimeTraceSnapshot,
+  width: number,
+  height: number
+) {
+  const events = getDisplayEvents(snapshot)
+  if (!events.length) return
+
+  const scale = clamp(width / 1440, 1.2, 2.4)
+  const marginX = Math.round(width * 0.07)
+  const blockMaxWidth = width - marginX * 2
+  let cursorY = Math.round(height * 0.08)
+  const maxY = height - Math.round(height * 0.06)
+
+  events.forEach(event => {
+    if (cursorY >= maxY) return
+    const current = event === snapshot.current
+    const blockHeight = drawBlock(ctx, event, marginX, cursorY, blockMaxWidth, scale, current)
+    cursorY += blockHeight + Math.round(14 * scale)
+  })
+}
+
+function drawFullscreenCodeOverlay(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  snapshot: RuntimeTraceSnapshot
+) {
+  ctx.save()
+  if (!drawFullscreenStackImages(ctx, snapshot, width, height)) {
+    drawFullscreenFallbackBlocks(ctx, snapshot, width, height)
+  }
+  ctx.restore()
+}
+
+function drawDockedOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -689,4 +800,19 @@ export function drawOverlay(
   })
 
   ctx.restore()
+}
+
+export function drawOverlay(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  snapshot: RuntimeTraceSnapshot,
+  options: DrawOverlayOptions = {}
+) {
+  if (options.mode === 'fullscreen-code') {
+    drawFullscreenCodeOverlay(ctx, width, height, snapshot)
+    return
+  }
+
+  drawDockedOverlay(ctx, width, height, snapshot)
 }

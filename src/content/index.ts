@@ -3,15 +3,30 @@ import { waitForEntryRuntime, type EntryRuntime } from './entry-context'
 import { changeResolution } from './resolution'
 import { createRuntimeTracer } from './runtime-tracer'
 import { createBlockStackImageCache } from './block-stack-image'
+import type { OverlayRenderMode } from './overlay-renderer'
 
 interface RecordOptions extends MediaRecorderOptions {
   frameRequestRate: number
+}
+
+declare global {
+  interface Window {
+    __ENTRY_RECORDER_REQUEST__?: {
+      mode?: OverlayRenderMode
+    }
+  }
 }
 
 const DEFAULT_WIDTH = 2560
 const DEFAULT_HEIGHT = 1440
 const DEFAULT_FPS = 30
 const VIDEO_BITS_PER_SECOND = 16_000_000
+
+function getRecordingMode(): OverlayRenderMode {
+  const mode = window.__ENTRY_RECORDER_REQUEST__?.mode
+  delete window.__ENTRY_RECORDER_REQUEST__
+  return mode === 'fullscreen-code' ? 'fullscreen-code' : 'overlay'
+}
 
 function selectMediaRecorderOptions(): Partial<RecordOptions> {
   const mimeTypes = [
@@ -74,7 +89,7 @@ function attachEntryAudio(stream: MediaStream, createjs: any) {
   }
 }
 
-function createRecordingIndicator(runtime: EntryRuntime) {
+function createRecordingIndicator(runtime: EntryRuntime, mode: OverlayRenderMode) {
   const id = 'entry-recorder-recording-indicator'
   const styleId = 'entry-recorder-recording-indicator-style'
   runtime.document.getElementById(id)?.remove()
@@ -124,7 +139,8 @@ function createRecordingIndicator(runtime: EntryRuntime) {
   indicator.id = id
   indicator.setAttribute('role', 'status')
   indicator.setAttribute('aria-live', 'polite')
-  indicator.innerHTML = '<span class="entry-recorder-dot"></span><span>REC 녹화 중</span><span class="entry-recorder-time">00:00</span>'
+  const label = mode === 'fullscreen-code' ? 'REC 코드 전체 화면' : 'REC 녹화 중'
+  indicator.innerHTML = `<span class="entry-recorder-dot"></span><span>${label}</span><span class="entry-recorder-time">00:00</span>`
 
   const time = indicator.querySelector('.entry-recorder-time')
   const startedAt = Date.now()
@@ -241,9 +257,9 @@ function createEntryStopFallback(runtime: EntryRuntime, stop: () => void) {
   }
 }
 
-void startRecording()
+void startRecording(getRecordingMode())
 
-async function startRecording() {
+async function startRecording(mode: OverlayRenderMode) {
   if (typeof MediaRecorder === 'undefined') {
     alert('이 브라우저는 MediaRecorder 녹화를 지원하지 않습니다.')
     return
@@ -299,6 +315,7 @@ async function startRecording() {
     const compositor = createCompositor(runtime.canvas, DEFAULT_WIDTH, DEFAULT_HEIGHT, tracer, {
       frameRate: DEFAULT_FPS,
       manual: !!originalRender,
+      mode,
     })
     stopCompositor = compositor.stop
 
@@ -358,7 +375,7 @@ async function startRecording() {
     })
 
     recorder.start()
-    cleanupIndicator = createRecordingIndicator(runtime)
+    cleanupIndicator = createRecordingIndicator(runtime, mode)
 
     runtime.Entry.addEventListener('stop', () => {
       stopRecording(recorder)

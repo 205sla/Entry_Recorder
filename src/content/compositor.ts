@@ -1,7 +1,8 @@
-import { drawOverlay } from './overlay-renderer'
+import { drawOverlay, type OverlayRenderMode } from './overlay-renderer'
 import type { RuntimeTraceSnapshot } from './runtime-tracer'
 
 const FRAME_THROTTLE_TOLERANCE_MS = 8
+const CODE_ONLY_BACKGROUND = '#FFFFFF'
 
 interface TraceSource {
   getSnapshot(): RuntimeTraceSnapshot
@@ -10,6 +11,7 @@ interface TraceSource {
 interface CompositorOptions {
   frameRate?: number
   manual?: boolean
+  mode?: OverlayRenderMode
 }
 
 function getEventKey(event: RuntimeTraceSnapshot['current']) {
@@ -51,7 +53,7 @@ export function createCompositor(
   width: number,
   height: number,
   traceSource: TraceSource,
-  { frameRate = 30, manual = false }: CompositorOptions = {}
+  { frameRate = 30, manual = false, mode = 'overlay' }: CompositorOptions = {}
 ) {
   const canvas = document.createElement('canvas')
   canvas.width = width
@@ -78,7 +80,7 @@ export function createCompositor(
     if (nextKey === overlayCacheKey) return
 
     overlayContext.clearRect(0, 0, width, height)
-    drawOverlay(overlayContext, width, height, snapshot)
+    drawOverlay(overlayContext, width, height, snapshot, { mode })
     overlayCacheKey = nextKey
   }
 
@@ -90,7 +92,12 @@ export function createCompositor(
 
     const snapshot = traceSource.getSnapshot()
     context.clearRect(0, 0, width, height)
-    context.drawImage(sourceCanvas, 0, 0, width, height)
+    if (mode === 'fullscreen-code') {
+      context.fillStyle = CODE_ONLY_BACKGROUND
+      context.fillRect(0, 0, width, height)
+    } else {
+      context.drawImage(sourceCanvas, 0, 0, width, height)
+    }
     renderOverlay(snapshot)
     context.drawImage(overlayCanvas, 0, 0)
     return true

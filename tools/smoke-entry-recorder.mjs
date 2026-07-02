@@ -464,9 +464,15 @@ function createMediaRecorderClass(smoke) {
   }
 }
 
-async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entry-event' }) {
+async function runSmokeCase({
+  iframe,
+  webgl,
+  renderHook = true,
+  stopMode = 'entry-event',
+  recordMode = 'overlay',
+}) {
   const smoke = {
-    mode: { iframe, webgl, renderHook, stopMode },
+    mode: { iframe, webgl, renderHook, stopMode, recordMode },
     alerts: [],
     captureStreams: [],
     downloads: [],
@@ -549,6 +555,7 @@ async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entr
   top.win.MediaRecorder = MediaRecorder
   top.win.MediaStream = FakeMediaStream
   top.win.Blob = Blob
+  top.win.__ENTRY_RECORDER_REQUEST__ = { mode: recordMode }
 
   if (iframe) {
     runtimeWindow.window = runtimeWindow
@@ -567,11 +574,14 @@ async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entr
   await waitForSmokeCompletion(smoke)
 
   const compositeDraws = smoke.drawImageCalls.filter(call => call.target.includes('created-canvas')).length
+  const sourceCanvasDraws = smoke.drawImageCalls.filter(call => call.source.includes('entryCanvas')).length
   const overlayTexts = smoke.textDraws.filter(text => text.includes('move') || text.includes('Entry') || text.includes('code'))
+  const modeDrawsExpectedBackground = recordMode !== 'fullscreen-code'
 
   return {
     ...smoke,
     compositeDraws,
+    sourceCanvasDraws,
     overlayTexts,
     pass:
       smoke.alerts.length === 0 &&
@@ -584,6 +594,7 @@ async function runSmokeCase({ iframe, webgl, renderHook = true, stopMode = 'entr
       smoke.captureStreams.length === 1 &&
       smoke.scopeRuns.length >= 1 &&
       compositeDraws >= 1 &&
+      (modeDrawsExpectedBackground ? sourceCanvasDraws >= 1 : sourceCanvasDraws === 0) &&
       overlayTexts.some(text => text.includes('move')),
   }
 }
@@ -597,6 +608,8 @@ const cases = [
   { iframe: true, webgl: true, renderHook: false },
   { iframe: false, webgl: true, stopMode: 'button-click' },
   { iframe: true, webgl: true, stopMode: 'button-click' },
+  { iframe: false, webgl: true, recordMode: 'fullscreen-code' },
+  { iframe: true, webgl: true, recordMode: 'fullscreen-code' },
 ]
 
 const results = []
@@ -613,6 +626,7 @@ if (process.argv.includes('--json')) {
       result.mode.webgl ? 'webgl' : '2d',
       result.mode.renderHook ? 'render-hook' : 'raf-fallback',
       result.mode.stopMode,
+      result.mode.recordMode,
     ].join('/')
     console.log(`${result.pass ? 'PASS' : 'FAIL'} ${mode}`)
   }
