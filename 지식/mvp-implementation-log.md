@@ -116,6 +116,9 @@
 - 전체화면 코드 전용 녹화 모드 추가 후 `node tools/smoke-entry-recorder.mjs`: 기존 오버레이 8개 케이스 + `fullscreen-code` 2개 케이스 성공. smoke에서는 `fullscreen-code` 모드에서 원본 Entry canvas가 합성되지 않는 것도 함께 검증한다.
 - 실제 작품 `6a3781996e2f06d9323a9bec`: `fullscreen-code` 모드로 `entry-recording-20260702-210545.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.458233`, size `6007982`, video `h264 2560x1440`, 평균 비디오 `26.85 fps`.
 - 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-fullscreen-code-frame-5s.png`에서 작품 배경 없이 흰 바탕 위에 실행 중인 여러 블록 묶음과 오브젝트 표시가 전체 화면 격자로 표시됨을 확인했다.
+- 작품 위 전체화면 코드 녹화 모드 추가 후 `node tools/smoke-entry-recorder.mjs`: 기존 10개 케이스 + `fullscreen-code-over-project` 2개 케이스 성공. smoke에서는 이 모드가 원본 Entry canvas를 합성하면서 전체화면 코드 오버레이를 쓰는 것도 함께 검증한다.
+- 실제 작품 `6a3781996e2f06d9323a9bec`: `fullscreen-code-over-project` 모드로 `entry-recording-20260702-211006.mp4` 다운로드 성공, `ffprobe` 기준 duration `10.467933`, size `10350691`, video `h264 2560x1440`, 평균 비디오 `26.12 fps`.
+- 추출 프레임 `C:\tmp\entry-recorder-real-smoke\output\real-fullscreen-code-over-project-frame-5s.png`에서 코드 묶음의 배경 패널 없이 엔트리 작품 화면 위에 실행 중인 여러 블록 묶음이 표시됨을 확인했다.
 
 ## 남은 확인
 

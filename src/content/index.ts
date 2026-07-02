@@ -25,7 +25,14 @@ const VIDEO_BITS_PER_SECOND = 16_000_000
 function getRecordingMode(): OverlayRenderMode {
   const mode = window.__ENTRY_RECORDER_REQUEST__?.mode
   delete window.__ENTRY_RECORDER_REQUEST__
+  if (mode === 'fullscreen-code-over-project') return 'fullscreen-code-over-project'
   return mode === 'fullscreen-code' ? 'fullscreen-code' : 'overlay'
+}
+
+function getRecordingIndicatorLabel(mode: OverlayRenderMode) {
+  if (mode === 'fullscreen-code') return 'REC 코드 전체 화면'
+  if (mode === 'fullscreen-code-over-project') return 'REC 작품 위 코드'
+  return 'REC 녹화 중'
 }
 
 function selectMediaRecorderOptions(): Partial<RecordOptions> {
@@ -139,7 +146,7 @@ function createRecordingIndicator(runtime: EntryRuntime, mode: OverlayRenderMode
   indicator.id = id
   indicator.setAttribute('role', 'status')
   indicator.setAttribute('aria-live', 'polite')
-  const label = mode === 'fullscreen-code' ? 'REC 코드 전체 화면' : 'REC 녹화 중'
+  const label = getRecordingIndicatorLabel(mode)
   indicator.innerHTML = `<span class="entry-recorder-dot"></span><span>${label}</span><span class="entry-recorder-time">00:00</span>`
 
   const time = indicator.querySelector('.entry-recorder-time')

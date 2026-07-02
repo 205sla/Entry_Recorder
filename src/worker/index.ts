@@ -1,10 +1,11 @@
 export {}
 
-type RecordingMode = 'overlay' | 'fullscreen-code'
+type RecordingMode = 'overlay' | 'fullscreen-code' | 'fullscreen-code-over-project'
 
 const MENU_ROOT_ID = 'entryRecorder'
 const START_OVERLAY_ID = 'startRecordOverlay'
 const START_FULLSCREEN_CODE_ID = 'startRecordFullscreenCode'
+const START_FULLSCREEN_CODE_OVER_PROJECT_ID = 'startRecordFullscreenCodeOverProject'
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
@@ -22,12 +23,18 @@ chrome.runtime.onInstalled.addListener(() => {
       parentId: MENU_ROOT_ID,
       title: '코드만 전체 화면 녹화',
     })
+    chrome.contextMenus.create({
+      id: START_FULLSCREEN_CODE_OVER_PROJECT_ID,
+      parentId: MENU_ROOT_ID,
+      title: '작품 위에 코드 전체 화면 녹화',
+    })
   })
 })
 
 function getRecordingMode(menuItemId: string | number): RecordingMode | null {
   if (menuItemId === START_OVERLAY_ID) return 'overlay'
   if (menuItemId === START_FULLSCREEN_CODE_ID) return 'fullscreen-code'
+  if (menuItemId === START_FULLSCREEN_CODE_OVER_PROJECT_ID) return 'fullscreen-code-over-project'
   return null
 }
 

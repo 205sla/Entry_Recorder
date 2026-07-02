@@ -610,6 +610,8 @@ const cases = [
   { iframe: true, webgl: true, stopMode: 'button-click' },
   { iframe: false, webgl: true, recordMode: 'fullscreen-code' },
   { iframe: true, webgl: true, recordMode: 'fullscreen-code' },
+  { iframe: false, webgl: true, recordMode: 'fullscreen-code-over-project' },
+  { iframe: true, webgl: true, recordMode: 'fullscreen-code-over-project' },
 ]
 
 const results = []

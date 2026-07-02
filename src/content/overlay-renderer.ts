@@ -7,7 +7,7 @@ const MAX_BLOCKS = 5
 const OBJECT_ACCENTS = ['#111827', '#2563EB', '#16A34A', '#EA580C', '#9333EA', '#0F766E', '#DB2777']
 const assemblyPatternCache = new Map<string, CanvasPattern | null>()
 
-export type OverlayRenderMode = 'overlay' | 'fullscreen-code'
+export type OverlayRenderMode = 'overlay' | 'fullscreen-code' | 'fullscreen-code-over-project'
 
 interface DrawOverlayOptions {
   mode?: OverlayRenderMode
@@ -809,7 +809,7 @@ export function drawOverlay(
   snapshot: RuntimeTraceSnapshot,
   options: DrawOverlayOptions = {}
 ) {
-  if (options.mode === 'fullscreen-code') {
+  if (options.mode === 'fullscreen-code' || options.mode === 'fullscreen-code-over-project') {
     drawFullscreenCodeOverlay(ctx, width, height, snapshot)
     return
   }
